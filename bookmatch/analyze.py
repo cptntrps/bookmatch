@@ -78,6 +78,37 @@ def content_axes(E: np.ndarray, k: int = 3) -> np.ndarray:
     return Vt[:k]
 
 
+def _titles(books: list[dict], idx) -> list[dict]:
+    return [{"title": books[i]["title"], "author": books[i].get("author", ""),
+             "myrating": float(books[i].get("myrating") or 0),
+             "avg": float(books[i].get("avg") or 0)} for i in idx]
+
+
+def build_profile(books: list[dict], E: np.ndarray, n: int = 8) -> dict:
+    """Assemble the serializable taste fingerprint the UI and chat agent consume."""
+    my = ratings(books)
+    rated = np.where(my > 0)[0]
+    proj = taste_axis(E, my)
+    order = np.argsort(-proj)
+    loved = [i for i in order if my[i] > 0][:n]
+    tolerated = [i for i in order[::-1] if my[i] > 0][:n]
+
+    d = contrarian(books)
+    do = np.argsort(-d)
+    ap = antipode(E, my)
+
+    return {
+        "n_books": len(books),
+        "n_rated": int(len(rated)),
+        "mean_rating": round(float(my[rated].mean()), 2) if len(rated) else None,
+        "loved": _titles(books, loved),
+        "tolerated": _titles(books, tolerated),
+        "loves_more_than_world": _titles(books, [i for i in do if my[i] > 0][:n]),
+        "world_loves_more": _titles(books, [i for i in do[::-1] if my[i] > 0][:n]),
+        "blind_spot": _titles(books, list(np.argsort(-ap)[:n])),
+    }
+
+
 def antipode(E: np.ndarray, my: np.ndarray, threshold: float = 4.0) -> np.ndarray:
     """Projection of every book onto the (negated) centroid of loved books.
     Highest values = least like what they love — the taste blind spot."""
