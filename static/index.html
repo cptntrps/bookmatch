@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book Match</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
+  header { padding: 1.4rem 2rem 0.6rem; display: flex; align-items: baseline; gap: .6rem; }
+  h1 { margin: 0; font-size: 1.5rem; } h1 small { color: #8a8f98; font-weight: normal; font-size: .9rem; }
+  .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; padding: 0 2rem 2rem; }
+  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 12px; padding: 1rem 1.1rem; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: #8a8f98; margin: .2rem 0 .8rem; }
+  input, button, textarea { font: inherit; }
+  input, textarea { width: 100%; background: #0f1115; border: 1px solid #2a2e37; color: #e6e6e6; border-radius: 8px; padding: .5rem .6rem; margin-bottom: .5rem; }
+  button { background: #4a9eff; color: #06121f; border: 0; border-radius: 8px; padding: .5rem .9rem; font-weight: 600; cursor: pointer; }
+  button.ghost { background: #23272f; color: #e6e6e6; }
+  button:disabled { opacity: .5; cursor: default; }
+  .acct { padding: .5rem .6rem; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .acct:hover { background: #23272f; } .acct.sel { border-color: #4a9eff; background: #202634; }
+  .acct .lbl { font-weight: 600; } .acct .sub { font-size: .72rem; color: #8a8f98; }
+  .warn { background: #3a2a12; border: 1px solid #d9a441; color: #f0c674; padding: .5rem .7rem; border-radius: 8px; font-size: .82rem; margin-bottom: .8rem; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .book { font-size: .82rem; padding: .18rem 0; border-bottom: 1px solid #20242c; }
+  .book .a { color: #8a8f98; }
+  .rec { font-size: .86rem; padding: .3rem 0; border-bottom: 1px solid #20242c; }
+  .rec .meta { color: #8a8f98; font-size: .72rem; }
+  #chatlog { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; margin-bottom: .6rem; }
+  .msg { padding: .5rem .7rem; border-radius: 10px; font-size: .9rem; white-space: pre-wrap; line-height: 1.4; }
+  .msg.user { background: #202634; align-self: flex-end; max-width: 80%; }
+  .msg.bot { background: #191c22; border: 1px solid #2a2e37; }
+  .row { display: flex; gap: .5rem; }
+  .muted { color: #8a8f98; font-size: .82rem; }
+  .spin { color: #4a9eff; }
+</style>
+</head>
+<body>
+<header><h1>📚 Book Match</h1><small>Goodreads taste + neighbor-gap recommendations</small></header>
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Add account</h2>
+      <input id="url" placeholder="Goodreads profile/shelf URL or user id">
+      <input id="label" placeholder="Label (e.g. Reader A)">
+      <button id="add">Add</button>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Accounts</h2>
+      <div id="accts" class="muted">loading…</div>
+    </div>
+  </div>
+  <div>
+    <div id="panel" class="card"><span class="muted">Add or pick an account, then run analysis.</span></div>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+// escape every untrusted string (Goodreads titles/authors, labels, chat input) before it hits innerHTML
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let sel = null, accts = [];
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || r.statusText); }
+  return r.json();
+}
+function bookLine(b){ return `<div class="book">${esc(b.title)} <span class="a">— ${esc(b.author)}</span></div>`; }
+
+async function loadAccts() {
+  accts = await api('/api/accounts');
+  $('#accts').innerHTML = accts.length ? accts.map(a =>
+    `<div class="acct ${sel&&sel.id===a.id?'sel':''}" data-id="${a.id}">
+       <div class="lbl">${esc(a.label)}</div>
+       <div class="sub">id ${esc(a.user_id)} · ${a.analyzed?'analyzed':'not analyzed'}</div></div>`).join('')
+    : '<span class="muted">none yet</span>';
+  document.querySelectorAll('.acct').forEach(el =>
+    el.onclick = () => select(accts.find(a=>a.id==el.dataset.id)));
+}
+
+async function select(a) {
+  sel = a; await loadAccts();
+  const d = await api('/api/accounts/'+a.id);
+  render(a, d.analysis);
+}
+
+function render(a, analysis) {
+  if (!analysis) {
+    $('#panel').innerHTML = `<h2>${esc(a.label)}</h2>
+      <p class="muted">No analysis yet.</p>
+      <button id="run">Run analysis</button>`;
+    $('#run').onclick = () => runAnalyze(a);
+    return;
+  }
+  const p = analysis.profile, recs = analysis.recs || [];
+  const warn = analysis.match_rate < 0.4
+    ? `<div class="warn">Only ${(analysis.match_rate*100).toFixed(0)}% of the shelf matched the corpus — recommendations are weak.</div>` : '';
+  $('#panel').innerHTML = `
+    <h2>${esc(a.label)} <button id="run" class="ghost" style="float:right">Re-analyze</button></h2>
+    ${warn}
+    <div class="muted">${p.n_rated} rated · mean ${p.mean_rating} · ${(analysis.match_rate*100).toFixed(0)}% matched</div>
+    <div class="cols" style="margin-top:.8rem">
+      <div><h2>Loves most</h2>${(p.loved||[]).map(bookLine).join('')}</div>
+      <div><h2>Loves more than the crowd</h2>${(p.loves_more_than_world||[]).map(bookLine).join('')}</div>
+    </div>
+    <h2 style="margin-top:1rem">Neighbor-gap recommendations</h2>
+    <div>${recs.map(r=>`<div class="rec">${esc(r.title)} <span class="a">— ${esc(r.author)}</span>
+        <div class="meta">score ${esc(r.score)} · ${esc(r.n_supporters)} nearby readers love it</div></div>`).join('')}</div>
+    <h2 style="margin-top:1rem">Ask about ${esc(a.label)}'s taste</h2>
+    <div id="chatlog"></div>
+    <div class="row"><input id="msg" placeholder="e.g. recommend more sci-fi based on my shelf">
+      <button id="send">Send</button></div>`;
+  $('#run').onclick = () => runAnalyze(a);
+  $('#send').onclick = send;
+  $('#msg').onkeydown = e => { if (e.key==='Enter') send(); };
+}
+
+async function runAnalyze(a) {
+  $('#panel').innerHTML = `<h2>${esc(a.label)}</h2><p class="spin">Fetching shelf, embedding, matching corpus, computing recommendations… (can take a minute)</p>`;
+  try { await api('/api/accounts/'+a.id+'/analyze', {method:'POST'});
+    await select(a);
+  } catch(e){ $('#panel').innerHTML = `<div class="warn">${esc(e.message)}</div><button id="run">Retry</button>`;
+    $('#run').onclick=()=>runAnalyze(a); }
+}
+
+let history = [];
+async function send() {
+  const t = $('#msg').value.trim(); if(!t) return;
+  $('#msg').value='';
+  const log=$('#chatlog');
+  const u=document.createElement('div'); u.className='msg user'; u.textContent=t; log.appendChild(u);
+  const wait=document.createElement('div'); wait.className='msg bot spin'; wait.textContent='thinking…';
+  log.appendChild(wait); log.scrollTop=log.scrollHeight;
+  try {
+    const d = await api('/api/accounts/'+sel.id+'/chat', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({message:t, history})});
+    wait.className='msg bot'; wait.textContent=d.reply;   // textContent = no XSS from model output
+    history.push({role:'user',content:t},{role:'assistant',content:d.reply});
+  } catch(e){ wait.className='msg bot'; wait.textContent='⚠ '+e.message; }
+  log.scrollTop=log.scrollHeight;
+}
+
+$('#add').onclick = async () => {
+  const url=$('#url').value.trim(); if(!url) return;
+  try { const a = await api('/api/accounts', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url_or_id:url, label:$('#label').value.trim()})});
+    $('#url').value=''; $('#label').value=''; await loadAccts();
+    select(accts.find(x=>x.id===a.id));
+  } catch(e){ alert(e.message); }
+};
+loadAccts();
+</script>
+</body>
+</html>
