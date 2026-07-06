@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.log
+# runtime data — the UCSD corpus lives outside the repo
+data/
+scratch/
+*.npz
+*.sqlite
