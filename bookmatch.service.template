@@ -1,0 +1,27 @@
+# bookmatch — Goodreads taste + neighbor-gap recommender app, aurora.
+# Serves the FastAPI app + SPA on LAN :8092. Depends on aurora-local Ollama,
+# livingos-api gateway (:8510), Postgres (:5435). Secrets (gateway key, PG_DSN)
+# come from the gitignored .env EnvironmentFile.
+# Install:  sudo install -Dm644 THIS /etc/systemd/system/bookmatch.service && sudo systemctl daemon-reload && sudo systemctl enable --now bookmatch
+# Rollback: sudo systemctl disable --now bookmatch && sudo rm /etc/systemd/system/bookmatch.service && sudo systemctl daemon-reload
+# Logs:     journalctl -u bookmatch -f
+
+[Unit]
+Description=Book Match — Goodreads taste + neighbor-gap recommender
+After=network-online.target postgresql.service
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=gui
+Group=gui
+WorkingDirectory=/home/gui/platform/services/bookmatch
+EnvironmentFile=/home/gui/platform/services/bookmatch/.env
+ExecStart=/usr/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
