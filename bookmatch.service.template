@@ -19,7 +19,7 @@ User=gui
 Group=gui
 WorkingDirectory=/home/gui/platform/services/bookmatch
 EnvironmentFile=/home/gui/platform/services/bookmatch/.env
-ExecStart=/usr/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
+ExecStart=/home/gui/.local/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
 Restart=on-failure
 RestartSec=3
 
