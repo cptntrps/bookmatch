@@ -1,0 +1,149 @@
+"""Postgres persistence for Book Match — schema `books.*` on the aurora DB.
+
+Additive to the shared livingos database: schema + tables are created with
+IF NOT EXISTS. Embeddings are stored as raw float32 bytes (numpy) rather than
+pgvector — all geometry runs in numpy, so we only need durable blobs, not
+in-DB vector search.
+"""
+from __future__ import annotations
+import json
+import os
+from dataclasses import dataclass
+
+import numpy as np
+import psycopg
+
+DSN = os.environ.get("BOOKMATCH_PG_DSN") or os.environ.get("PG_DSN") \
+    or "postgresql://livingos@localhost:5435/livingos"
+
+_SCHEMA = """
+CREATE SCHEMA IF NOT EXISTS books;
+CREATE TABLE IF NOT EXISTS books.accounts (
+    id        serial PRIMARY KEY,
+    user_id   text UNIQUE NOT NULL,
+    label     text,
+    url       text,
+    added_at  timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS books.shelf_books (
+    id           serial PRIMARY KEY,
+    account_id   int NOT NULL REFERENCES books.accounts(id) ON DELETE CASCADE,
+    gr_book_id   text,
+    title        text NOT NULL,
+    author       text,
+    myrating     real,
+    avg          real,
+    shelves      text,
+    descr        text,
+    embedding    bytea,
+    matched_book_id int,
+    UNIQUE (account_id, title, author)
+);
+CREATE TABLE IF NOT EXISTS books.analyses (
+    account_id   int PRIMARY KEY REFERENCES books.accounts(id) ON DELETE CASCADE,
+    profile      jsonb,
+    recs         jsonb,
+    match_rate   real,
+    computed_at  timestamptz DEFAULT now()
+);
+"""
+
+
+def connect() -> psycopg.Connection:
+    return psycopg.connect(DSN)
+
+
+def init_schema(conn: psycopg.Connection | None = None):
+    own = conn is None
+    conn = conn or connect()
+    try:
+        conn.execute(_SCHEMA)
+        conn.commit()
+    finally:
+        if own:
+            conn.close()
+
+
+def upsert_account(conn, user_id: str, label: str, url: str) -> int:
+    row = conn.execute(
+        """INSERT INTO books.accounts (user_id, label, url) VALUES (%s,%s,%s)
+           ON CONFLICT (user_id) DO UPDATE SET label=EXCLUDED.label, url=EXCLUDED.url
+           RETURNING id""", (user_id, label, url)).fetchone()
+    conn.commit()
+    return row[0]
+
+
+def save_shelf(conn, account_id: int, books: list[dict], embeddings: np.ndarray,
+               matched: list[int | None]):
+    """Replace the stored shelf for an account (idempotent re-analysis)."""
+    conn.execute("DELETE FROM books.shelf_books WHERE account_id=%s", (account_id,))
+    with conn.cursor() as cur:
+        for b, emb, mid in zip(books, embeddings, matched):
+            cur.execute(
+                """INSERT INTO books.shelf_books
+                   (account_id, gr_book_id, title, author, myrating, avg, shelves,
+                    descr, embedding, matched_book_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (account_id, title, author) DO NOTHING""",
+                (account_id, b.get("book_id"), b["title"], b.get("author"),
+                 float(b.get("myrating") or 0) or None,
+                 float(b.get("avg") or 0) or None, b.get("shelves"),
+                 b.get("desc"), np.asarray(emb, np.float32).tobytes(), mid))
+    conn.commit()
+
+
+def save_analysis(conn, account_id: int, profile: dict, recs: list[dict],
+                  match_rate: float):
+    conn.execute(
+        """INSERT INTO books.analyses (account_id, profile, recs, match_rate, computed_at)
+           VALUES (%s,%s,%s,%s, now())
+           ON CONFLICT (account_id) DO UPDATE
+             SET profile=EXCLUDED.profile, recs=EXCLUDED.recs,
+                 match_rate=EXCLUDED.match_rate, computed_at=now()""",
+        (account_id, json.dumps(profile), json.dumps(recs), match_rate))
+    conn.commit()
+
+
+def list_accounts(conn) -> list[dict]:
+    rows = conn.execute(
+        """SELECT a.id, a.user_id, a.label, a.url, a.added_at,
+                  (an.account_id IS NOT NULL) AS analyzed
+           FROM books.accounts a LEFT JOIN books.analyses an ON an.account_id=a.id
+           ORDER BY a.added_at DESC""").fetchall()
+    return [{"id": r[0], "user_id": r[1], "label": r[2], "url": r[3],
+             "added_at": r[4].isoformat() if r[4] else None, "analyzed": r[5]}
+            for r in rows]
+
+
+def get_analysis(conn, account_id: int) -> dict | None:
+    row = conn.execute(
+        """SELECT profile, recs, match_rate, computed_at
+           FROM books.analyses WHERE account_id=%s""", (account_id,)).fetchone()
+    if not row:
+        return None
+    return {"profile": row[0], "recs": row[1], "match_rate": row[2],
+            "computed_at": row[3].isoformat() if row[3] else None}
+
+
+@dataclass
+class LoadedShelf:
+    books: list[dict]
+    embeddings: np.ndarray
+    matched: list[int | None]
+
+
+def load_shelf(conn, account_id: int) -> LoadedShelf | None:
+    rows = conn.execute(
+        """SELECT gr_book_id, title, author, myrating, avg, shelves, descr,
+                  embedding, matched_book_id
+           FROM books.shelf_books WHERE account_id=%s ORDER BY id""",
+        (account_id,)).fetchall()
+    if not rows:
+        return None
+    books, embs, matched = [], [], []
+    for r in rows:
+        books.append({"book_id": r[0], "title": r[1], "author": r[2],
+                      "myrating": r[3], "avg": r[4], "shelves": r[5], "desc": r[6]})
+        embs.append(np.frombuffer(r[7], dtype=np.float32) if r[7] else np.zeros(0))
+        matched.append(r[8])
+    return LoadedShelf(books, np.vstack(embs) if embs and embs[0].size else np.zeros((0, 0)), matched)

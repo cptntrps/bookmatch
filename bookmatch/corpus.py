@@ -86,14 +86,26 @@ class Corpus:
             target[bid] = rating if rating > 0 else 4.0
         rate = len(matched) / max(1, len(books))
 
-        recs_out = []
+        # Goodreads stores the same work under many book_ids, so excluding recs by
+        # the single matched id is not enough — a sibling edition of an owned book
+        # re-surfaces. Exclude (and dedupe recs) by normkey instead.
+        owned_keys = {normkey(b["title"], b.get("author") or "") for b in books}
+
+        recs_out, seen_keys = [], set()
         if target:
+            # over-fetch so dedup/exclusion still leaves a full page
             recs = neighbors.recommend(self._csr, self._csc, target,
-                                       k_neighbors=k_neighbors, n_recs=n_recs,
+                                       k_neighbors=k_neighbors, n_recs=n_recs * 4,
                                        min_overlap=min_overlap)
             for r in recs:
                 title, author = self.title_for(r.item)
+                key = normkey(title, author)
+                if key in owned_keys or key in seen_keys:
+                    continue
+                seen_keys.add(key)
                 recs_out.append({"title": title, "author": author,
                                  "score": round(r.score, 3),
                                  "n_supporters": r.n_supporters})
+                if len(recs_out) >= n_recs:
+                    break
         return ShelfRecs(matched, unmatched, recs_out, rate)

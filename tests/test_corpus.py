@@ -20,9 +20,13 @@ def test_shelf_matches_and_recommends():
     assert out.match_rate >= 0.4, f"match rate only {out.match_rate:.2f}"
     assert len(out.matched) + len(out.unmatched) == len(books)
 
-    # recs must exist, exclude owned books, and carry titles + supporter counts.
-    owned = {(m.title.lower(), m.author.lower()) for m in out.matched}
+    # recs must exist, carry fields, and exclude owned works at the normkey level
+    # (Goodreads has many book_ids per work — a sibling edition must not resurface).
+    from bookmatch.match import normkey
+    owned_keys = {normkey(b["title"], b.get("author") or "") for b in books}
+    rec_keys = [normkey(r["title"], r["author"]) for r in out.recs]
     assert out.recs, "no recommendations produced"
-    for r in out.recs:
+    for r, k in zip(out.recs, rec_keys):
         assert r["title"] and "score" in r and "n_supporters" in r
-        assert (r["title"].lower(), r["author"].lower()) not in owned
+        assert k not in owned_keys, f"recommended an owned work: {r['title']}"
+    assert len(rec_keys) == len(set(rec_keys)), "duplicate works in recs"
