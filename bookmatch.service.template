@@ -13,6 +13,9 @@
 [Unit]
 Description=Book Match — Goodreads taste + neighbor-gap recommender
 After=network-online.target postgresql.service
+# Fail loud if the ADR-0021 sops drop-in is missing: without it the service would start
+# with no gateway key / PG_DSN instead of refusing (codex 2026-07-11, tts finding applied here).
+AssertPathExists=/etc/systemd/system/bookmatch.service.d/sops.conf
 Wants=network-online.target
 StartLimitIntervalSec=120
 StartLimitBurst=5
