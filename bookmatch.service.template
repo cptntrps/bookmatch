@@ -1,9 +1,13 @@
 # bookmatch — Goodreads taste + neighbor-gap recommender app, aurora.
 # Serves the FastAPI app + SPA on LAN :8092. Depends on aurora-local Ollama,
-# livingos-api gateway (:8510), Postgres (:5435). Secrets (gateway key, PG_DSN)
-# come from the gitignored .env EnvironmentFile.
-# Install:  sudo install -Dm644 THIS /etc/systemd/system/bookmatch.service && sudo systemctl daemon-reload && sudo systemctl enable --now bookmatch
-# Rollback: sudo systemctl disable --now bookmatch && sudo rm /etc/systemd/system/bookmatch.service && sudo systemctl daemon-reload
+# livingos-api gateway (:8510), Postgres (:5435).
+# Secrets (ADR-0021, drained 2026-07-11): sops store platform-secrets services/bookmatch.enc.env
+# (recipients operator-master + principal bookmatch, key ~/.keys/bookmatch.age), decrypted at
+# start into /run/bookmatch/secrets.env by the sops drop-in — install BOTH this unit AND
+# platform-secrets deploy/bookmatch-sops.conf (as bookmatch.service.d/sops.conf). No plaintext
+# .env exists on the services plane anymore.
+# Install:  sudo install -Dm644 THIS /etc/systemd/system/bookmatch.service && sudo install -Dm644 ~/platform/secrets/deploy/bookmatch-sops.conf /etc/systemd/system/bookmatch.service.d/sops.conf && sudo systemctl daemon-reload && sudo systemctl enable --now bookmatch
+# Rollback: sudo systemctl disable --now bookmatch && sudo rm -r /etc/systemd/system/bookmatch.service /etc/systemd/system/bookmatch.service.d && sudo systemctl daemon-reload
 # Logs:     journalctl -u bookmatch -f
 
 [Unit]
@@ -18,7 +22,7 @@ Type=simple
 User=gui
 Group=gui
 WorkingDirectory=/home/gui/platform/services/bookmatch
-EnvironmentFile=/home/gui/platform/services/bookmatch/.env
+# Env comes from the sops drop-in (bookmatch.service.d/sops.conf -> /run/bookmatch/secrets.env).
 ExecStart=/home/gui/.local/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
 Restart=on-failure
 RestartSec=3
