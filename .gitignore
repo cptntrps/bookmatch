@@ -9,3 +9,4 @@ data/
 scratch/
 *.npz
 *.sqlite
+.deploy-last-good
