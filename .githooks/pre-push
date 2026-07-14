@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# pre-push test gate (ADR-0020 adopted-standard, grocery pattern): the full suite
+# must be green before anything leaves this repo. Exit code is pytest's — honest
+# red-reject, no soft-fail path.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+echo "pre-push: running bookmatch test suite (python3 -m pytest -q)" >&2
+python3 -m pytest -q
