@@ -1,0 +1,43 @@
+# Product-incubated capability (ADR-0095): registered per registration-debt
+# triage (librarian verdict REGISTER, actionable 34383 -> row 51176). Code
+# stays in this repo (canonical home: bookmatch); owner-of-record: bookmatch-po
+# (product-steward, ADR-0099).
+entries:
+  - id: cap.bookmatch-recommend
+    kind: capability
+    statement: >-
+      Goodreads-shelf-grounded book recommendation + taste-profile agent
+      surface (bookmatch/app.py FastAPI service): ingests a public Goodreads
+      shelf via RSS (bookmatch/rss.py), derives taste-axis embeddings with
+      Ollama nomic-embed-text (bookmatch/embed.py, bookmatch/analyze.py), runs
+      neighbor-gap collaborative filtering against the UCSD Goodreads corpus
+      (bookmatch/neighbors.py, bookmatch/corpus.py) to produce grounded
+      recommendations (bookmatch/match.py), and exposes an embedded chat agent
+      over the recommendation context (bookmatch/agent.py) via the scoped
+      livingos-api gateway key. The reusable seam is the account -> analyze ->
+      recommend -> chat HTTP surface, not any one internal module. Consumers
+      seen: bookmatch.service on aurora :8092 (MyApps tile), distinct from the
+      unrelated :8093 Calibre-Web ebook library. owner-of-record bookmatch-po;
+      home bookmatch repo; promotion trigger = first external consumer
+      (ADR-0095).
+    interfaces:
+      - type: service
+        path: bookmatch/app.py
+        invoke: uvicorn bookmatch.app:app --port 8092
+    owner: bookmatch-po
+    maturity: exercised
+    proof:
+      - type: test
+        ref: tests/test_analyze.py
+        note: >-
+          Repo pytest suite (test_analyze/test_neighbors/test_match/
+          test_agent/test_corpus/test_storage/test_rss) exercises the
+          pipeline; the service runs live on aurora :8092 since 2026-07-13
+          (v0.2.0, gated bare remote + rollback-safe deploy).
+    affordances:
+      mcp_servers: []
+      env: []
+      live_deps: [ollama, livingos-api, postgres]
+      model_tier: local
+      hardware: none
+    dependencies: []
