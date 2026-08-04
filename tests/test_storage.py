@@ -61,3 +61,41 @@ def test_save_and_get_analysis(conn):
     accts = storage.list_accounts(conn)
     mine = [a for a in accts if a["user_id"] == TEST_USER]
     assert mine and mine[0]["analyzed"] is True
+
+
+def test_veto_persists_across_reanalysis_and_ingest(conn):
+    """Row 95834: a veto must survive both a fresh save_analysis (re-analyze) and a
+    fresh save_shelf (Goodreads re-ingest) — it lives in its own table, untouched by
+    either's delete-and-replace write path."""
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+
+    storage.add_veto(conn, aid, "Ready Player One", "Ernest Cline")
+    assert storage.vetoed_keys(conn, aid) == {"ready player one|cline"}
+
+    # simulate a Goodreads re-ingest (save_shelf deletes and reinserts shelf_books)
+    embs = np.zeros((1, 8), np.float32)
+    storage.save_shelf(conn, aid, [{"title": "Dune", "author": "Frank Herbert"}],
+                       embs, matched=[None])
+    # and a re-analyze (save_analysis is an upsert over books.analyses)
+    storage.save_analysis(conn, aid, {"taste": []},
+                          [{"title": "Ready Player One", "author": "Ernest Cline",
+                            "score": 5.4, "n_supporters": 38}],
+                          match_rate=0.5)
+
+    assert storage.vetoed_keys(conn, aid) == {"ready player one|cline"}
+
+    storage.remove_veto(conn, aid, "Ready Player One", "Ernest Cline")
+    assert storage.vetoed_keys(conn, aid) == set()
+
+
+def test_list_vetoes(conn):
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+    storage.add_veto(conn, aid, "Ready Player One", "Ernest Cline")
+    got = storage.list_vetoes(conn, aid)
+    assert len(got) == 1
+    assert got[0]["title"] == "Ready Player One"
+    assert got[0]["normkey"] == "ready player one|cline"
+
+    # idempotent — vetoing twice does not duplicate
+    storage.add_veto(conn, aid, "Ready Player One", "Ernest Cline")
+    assert len(storage.list_vetoes(conn, aid)) == 1

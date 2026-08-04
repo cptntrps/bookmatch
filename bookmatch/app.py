@@ -25,6 +25,7 @@ if _ENV.exists():
 from . import analyze, embed, storage       # noqa: E402
 from .agent import BookAgent                 # noqa: E402
 from .corpus import Corpus                   # noqa: E402
+from .match import normkey                   # noqa: E402
 from .rss import fetch_shelf, parse_user_id  # noqa: E402
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
@@ -50,6 +51,15 @@ class AddAccount(BaseModel):
 class ChatIn(BaseModel):
     message: str
     history: list[dict] = []
+
+
+class VetoIn(BaseModel):
+    title: str
+    author: str = ""
+
+
+def _drop_vetoed(recs: list[dict], vetoed: set[str]) -> list[dict]:
+    return [r for r in recs if normkey(r["title"], r.get("author") or "") not in vetoed]
 
 
 @app.get("/")
@@ -104,10 +114,13 @@ def analyze_account(account_id: int):
 
         storage.save_shelf(conn, account_id, books, E, matched_col)
         storage.save_analysis(conn, account_id, profile, result.recs, result.match_rate)
+        # vetoes outlive this re-analysis — a book disliked before must not resurface
+        # just because a fresh corpus pass re-derives it (goal of row 95834)
+        recs_out = _drop_vetoed(result.recs, storage.vetoed_keys(conn, account_id))
 
     return {"account_id": account_id, "match_rate": round(result.match_rate, 3),
             "n_matched": len(result.matched), "n_unmatched": len(result.unmatched),
-            "n_books": len(books), "profile": profile, "recs": result.recs,
+            "n_books": len(books), "profile": profile, "recs": recs_out,
             "warning": (None if result.match_rate >= 0.4 else
                         f"only {len(result.matched)}/{len(books)} books matched the "
                         "corpus — recommendations are weak")}
@@ -120,7 +133,30 @@ def get_account(account_id: int):
         if account_id not in accts:
             raise HTTPException(404, "unknown account")
         analysis = storage.get_analysis(conn, account_id)
+        if analysis and analysis.get("recs"):
+            vetoed = storage.vetoed_keys(conn, account_id)
+            analysis = {**analysis, "recs": _drop_vetoed(analysis["recs"], vetoed)}
     return {"account": accts[account_id], "analysis": analysis}
+
+
+@app.post("/api/accounts/{account_id}/veto")
+def veto_book(account_id: int, body: VetoIn):
+    with storage.connect() as conn:
+        accts = {a["id"]: a for a in storage.list_accounts(conn)}
+        if account_id not in accts:
+            raise HTTPException(404, "unknown account")
+        storage.add_veto(conn, account_id, body.title, body.author)
+    return {"ok": True}
+
+
+@app.delete("/api/accounts/{account_id}/veto")
+def unveto_book(account_id: int, body: VetoIn):
+    with storage.connect() as conn:
+        accts = {a["id"]: a for a in storage.list_accounts(conn)}
+        if account_id not in accts:
+            raise HTTPException(404, "unknown account")
+        storage.remove_veto(conn, account_id, body.title, body.author)
+    return {"ok": True}
 
 
 @app.post("/api/accounts/{account_id}/chat")
@@ -129,10 +165,12 @@ def chat(account_id: int, body: ChatIn):
         analysis = storage.get_analysis(conn, account_id)
         shelf = storage.load_shelf(conn, account_id)
         accts = {a["id"]: a for a in storage.list_accounts(conn)}
+        vetoed = storage.vetoed_keys(conn, account_id) if analysis else set()
     if analysis is None or shelf is None:
         raise HTTPException(409, "analyze this account before chatting")
     agent = BookAgent(shelf.books, shelf.embeddings, analysis["profile"],
-                      analysis["recs"], label=accts.get(account_id, {}).get("label", "this reader"))
+                      _drop_vetoed(analysis["recs"], vetoed),
+                      label=accts.get(account_id, {}).get("label", "this reader"))
     try:
         reply = agent.chat(body.history, body.message)
     except Exception as e:

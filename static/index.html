@@ -106,8 +106,12 @@ function render(a, analysis) {
       <div><h2>Loves more than the crowd</h2>${(p.loves_more_than_world||[]).map(bookLine).join('')}</div>
     </div>
     <h2 style="margin-top:1rem">Neighbor-gap recommendations</h2>
-    <div>${recs.map(r=>`<div class="rec">${esc(r.title)} <span class="a">— ${esc(r.author)}</span>
-        <div class="meta">score ${esc(r.score)} · ${esc(r.n_supporters)} nearby readers love it</div></div>`).join('')}</div>
+    <div>${recs.map((r,i)=>`<div class="rec" data-i="${i}">
+        <div class="row" style="align-items:flex-start;justify-content:space-between">
+          <div>${esc(r.title)} <span class="a">— ${esc(r.author)}</span>
+            <div class="meta">score ${esc(r.score)} · ${esc(r.n_supporters)} nearby readers love it</div></div>
+          <button class="ghost veto" style="padding:.2rem .5rem;font-size:.72rem" title="not interested">not interested</button>
+        </div></div>`).join('')}</div>
     <h2 style="margin-top:1rem">Ask about ${esc(a.label)}'s taste</h2>
     <div id="chatlog"></div>
     <div class="row"><input id="msg" placeholder="e.g. recommend more sci-fi based on my shelf">
@@ -115,6 +119,17 @@ function render(a, analysis) {
   $('#run').onclick = () => runAnalyze(a);
   $('#send').onclick = send;
   $('#msg').onkeydown = e => { if (e.key==='Enter') send(); };
+  document.querySelectorAll('.rec .veto').forEach(btn => btn.onclick = async () => {
+    const i = Number(btn.closest('.rec').dataset.i);
+    const r = recs[i];
+    btn.disabled = true;
+    try { await api('/api/accounts/'+a.id+'/veto', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({title:r.title, author:r.author})});
+      const d = await api('/api/accounts/'+a.id);
+      render(a, d.analysis);
+    } catch(e){ btn.disabled = false; alert(e.message); }
+  });
 }
 
 async function runAnalyze(a) {
