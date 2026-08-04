@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS books.analyses (
     match_rate   real,
     computed_at  timestamptz DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS books.vetoes (
+    id           serial PRIMARY KEY,
+    account_id   int NOT NULL REFERENCES books.accounts(id) ON DELETE CASCADE,
+    normkey      text NOT NULL,
+    title        text NOT NULL,
+    author       text,
+    created_at   timestamptz DEFAULT now(),
+    UNIQUE (account_id, normkey)
+);
 """
 
 
@@ -147,3 +156,36 @@ def load_shelf(conn, account_id: int) -> LoadedShelf | None:
         embs.append(np.frombuffer(r[7], dtype=np.float32) if r[7] else np.zeros(0))
         matched.append(r[8])
     return LoadedShelf(books, np.vstack(embs) if embs and embs[0].size else np.zeros((0, 0)), matched)
+
+
+def add_veto(conn, account_id: int, title: str, author: str | None) -> None:
+    """Record a 'not interested' verdict — outlives re-analysis and Goodreads ingest
+    (a separate table, never touched by save_shelf/save_analysis's replace-on-write)."""
+    from .match import normkey
+    conn.execute(
+        """INSERT INTO books.vetoes (account_id, normkey, title, author)
+           VALUES (%s,%s,%s,%s)
+           ON CONFLICT (account_id, normkey) DO NOTHING""",
+        (account_id, normkey(title, author or ""), title, author))
+    conn.commit()
+
+
+def remove_veto(conn, account_id: int, title: str, author: str | None) -> None:
+    from .match import normkey
+    conn.execute("DELETE FROM books.vetoes WHERE account_id=%s AND normkey=%s",
+                 (account_id, normkey(title, author or "")))
+    conn.commit()
+
+
+def vetoed_keys(conn, account_id: int) -> set[str]:
+    rows = conn.execute("SELECT normkey FROM books.vetoes WHERE account_id=%s",
+                        (account_id,)).fetchall()
+    return {r[0] for r in rows}
+
+
+def list_vetoes(conn, account_id: int) -> list[dict]:
+    rows = conn.execute(
+        """SELECT normkey, title, author, created_at FROM books.vetoes
+           WHERE account_id=%s ORDER BY created_at DESC""", (account_id,)).fetchall()
+    return [{"normkey": r[0], "title": r[1], "author": r[2],
+             "created_at": r[3].isoformat() if r[3] else None} for r in rows]
