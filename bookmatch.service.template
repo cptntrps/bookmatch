@@ -24,7 +24,7 @@ StartLimitBurst=5
 Type=simple
 User=gui
 Group=gui
-WorkingDirectory=/home/gui/platform/services/bookmatch
+WorkingDirectory=/home/gui/products/bookmatch
 # Env comes from the sops drop-in (bookmatch.service.d/sops.conf -> /run/bookmatch/secrets.env).
 ExecStart=/home/gui/.local/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
 Restart=on-failure
