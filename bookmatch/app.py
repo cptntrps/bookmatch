@@ -34,7 +34,7 @@ corpus = Corpus()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    storage.init_schema()
+    storage.ensure_schema_ready()
     if corpus.ready:
         corpus.load()  # ~1-2s: mmap npz + tocsc + open sqlite
     yield

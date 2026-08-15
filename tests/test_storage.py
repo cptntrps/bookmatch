@@ -23,7 +23,7 @@ TEST_USER = "bookmatch-test-9999999"
 
 @pytest.fixture
 def conn():
-    storage.init_schema()
+    storage.ensure_schema_ready()
     c = storage.connect()
     c.execute("DELETE FROM books.accounts WHERE user_id=%s", (TEST_USER,)); c.commit()
     yield c
