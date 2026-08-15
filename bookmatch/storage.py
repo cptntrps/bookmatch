@@ -39,6 +39,24 @@ CREATE TABLE IF NOT EXISTS books.shelf_books (
     matched_book_id int,
     UNIQUE (account_id, title, author)
 );
+-- Fields the Goodreads RSS feed always carried and the importer used to discard
+-- (ops.actionables:131533). Additive, so an existing shelf keeps its rows and
+-- backfills on the next analyze. read_at is Goodreads' CATALOGUING date, not a
+-- proven finish date — a bulk shelf-marking session stamps many books with one
+-- day, so read it as "read by", never "read on".
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS read_at    date;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS date_added timestamptz;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS review     text;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS isbn       text;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS num_pages  int;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS published  int;
+ALTER TABLE books.shelf_books ADD COLUMN IF NOT EXISTS cover_url  text;
+-- the ISBN crosswalk is the point of capturing it (deterministic Calibre/reading
+-- matching instead of fuzzy title matching)
+CREATE INDEX IF NOT EXISTS shelf_books_isbn_idx
+    ON books.shelf_books (isbn) WHERE isbn IS NOT NULL;
+CREATE INDEX IF NOT EXISTS shelf_books_gr_book_id_idx
+    ON books.shelf_books (gr_book_id) WHERE gr_book_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS books.analyses (
     account_id   int PRIMARY KEY REFERENCES books.accounts(id) ON DELETE CASCADE,
     profile      jsonb,
@@ -91,13 +109,18 @@ def save_shelf(conn, account_id: int, books: list[dict], embeddings: np.ndarray,
             cur.execute(
                 """INSERT INTO books.shelf_books
                    (account_id, gr_book_id, title, author, myrating, avg, shelves,
-                    descr, embedding, matched_book_id)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    descr, embedding, matched_book_id,
+                    read_at, date_added, review, isbn, num_pages, published, cover_url)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                           %s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (account_id, title, author) DO NOTHING""",
                 (account_id, b.get("book_id"), b["title"], b.get("author"),
                  float(b.get("myrating") or 0) or None,
                  float(b.get("avg") or 0) or None, b.get("shelves"),
-                 b.get("desc"), np.asarray(emb, np.float32).tobytes(), mid))
+                 b.get("desc"), np.asarray(emb, np.float32).tobytes(), mid,
+                 b.get("read_at"), b.get("date_added"), b.get("review"),
+                 b.get("isbn"), b.get("num_pages"), b.get("published"),
+                 b.get("cover_url")))
     conn.commit()
 
 
@@ -144,7 +167,8 @@ class LoadedShelf:
 def load_shelf(conn, account_id: int) -> LoadedShelf | None:
     rows = conn.execute(
         """SELECT gr_book_id, title, author, myrating, avg, shelves, descr,
-                  embedding, matched_book_id
+                  embedding, matched_book_id,
+                  read_at, date_added, review, isbn, num_pages, published, cover_url
            FROM books.shelf_books WHERE account_id=%s ORDER BY id""",
         (account_id,)).fetchall()
     if not rows:
@@ -152,7 +176,11 @@ def load_shelf(conn, account_id: int) -> LoadedShelf | None:
     books, embs, matched = [], [], []
     for r in rows:
         books.append({"book_id": r[0], "title": r[1], "author": r[2],
-                      "myrating": r[3], "avg": r[4], "shelves": r[5], "desc": r[6]})
+                      "myrating": r[3], "avg": r[4], "shelves": r[5], "desc": r[6],
+                      "read_at": r[9].isoformat() if r[9] else None,
+                      "date_added": r[10].isoformat() if r[10] else None,
+                      "review": r[11], "isbn": r[12], "num_pages": r[13],
+                      "published": r[14], "cover_url": r[15]})
         embs.append(np.frombuffer(r[7], dtype=np.float32) if r[7] else np.zeros(0))
         matched.append(r[8])
     return LoadedShelf(books, np.vstack(embs) if embs and embs[0].size else np.zeros((0, 0)), matched)

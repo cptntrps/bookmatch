@@ -100,8 +100,10 @@ def analyze_account(account_id: int):
         if account_id not in accts:
             raise HTTPException(404, "unknown account")
         acct = accts[account_id]
+        dropped_editions: list[dict] = []
         try:
-            books = fetch_shelf(acct["url"] or acct["user_id"])
+            books = fetch_shelf(acct["url"] or acct["user_id"],
+                                dropped_out=dropped_editions)
         except ValueError as e:
             raise HTTPException(400, str(e))       # private/empty profile — fail loud
 
@@ -120,7 +122,11 @@ def analyze_account(account_id: int):
 
     return {"account_id": account_id, "match_rate": round(result.match_rate, 3),
             "n_matched": len(result.matched), "n_unmatched": len(result.unmatched),
-            "n_books": len(books), "profile": profile, "recs": recs_out,
+            "n_books": len(books),
+            # the shelf is one row per BOOK; duplicate Goodreads editions are merged,
+            # never silently dropped (ops.actionables:131533)
+            "n_duplicate_editions": len(dropped_editions),
+            "profile": profile, "recs": recs_out,
             "warning": (None if result.match_rate >= 0.4 else
                         f"only {len(result.matched)}/{len(books)} books matched the "
                         "corpus — recommendations are weak")}

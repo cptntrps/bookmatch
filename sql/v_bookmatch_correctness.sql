@@ -10,10 +10,11 @@
 -- NOT health. Health is a live probe (systemd bookmatch.service + GET :8092/api/health with
 -- ok:true AND corpus_ready:true) and is deliberately declared not-applicable for the view slot.
 --
--- match_rate note: bookmatch computes match_rate over the RAW RSS shelf list, while
--- books.shelf_books is deduped by UNIQUE (account_id, title, author). shelf_corpus_matched can
--- therefore be slightly below match_rate * shelf_books. The delta is EXPOSED as a column, not
--- asserted on — a tight equality here would fire falsely on every duplicate-edition shelf.
+-- match_rate note: since ops.actionables:131533 the fetcher deduplicates editions BEFORE
+-- embedding and matching (rss.dedupe_editions), so match_rate and books.shelf_books are now
+-- computed over the same list and the delta should be ~0. It stays EXPOSED as a column rather
+-- than asserted on: a shelf ingested before that change still carries the old skew, and a tight
+-- equality would fire falsely on it.
 --
 -- Owner: bookmatch-po. Read-only view; no dependency on service code.
 

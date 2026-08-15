@@ -1,6 +1,8 @@
 """Write-path test for books.* storage. Skipped if the Postgres DSN is unreachable.
 Uses a throwaway account (unique user_id) and cleans up via ON DELETE CASCADE.
 """
+from datetime import datetime
+
 import numpy as np
 import pytest
 
@@ -46,6 +48,41 @@ def test_save_and_reload_shelf_without_recompute(conn):
     assert loaded.matched == [101, None]
     # embeddings round-trip byte-exact (no recompute needed on reload)
     assert np.allclose(loaded.embeddings, embs)
+
+
+def test_shelf_roundtrips_the_goodreads_metadata(conn):
+    """ops.actionables:131533 — read date, ISBN, review, pages, publication year and
+    cover URL must survive the write path, not stop at the parser."""
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+    book = {"book_id": "42", "title": "The Lover", "author": "Marguerite Duras",
+            "myrating": 5, "avg": 3.79, "shelves": "fav", "desc": "d1",
+            "read_at": "2026-07-20", "date_added": "2026-07-20T22:07:10-07:00",
+            "review": "Spare and devastating.", "isbn": "0060977825",
+            "num_pages": 117, "published": 1984,
+            "cover_url": "https://i.gr-assets.com/large.jpg"}
+    storage.save_shelf(conn, aid, [book], np.zeros((1, 8), np.float32), matched=[None])
+
+    got = storage.load_shelf(conn, aid).books[0]
+    assert got["read_at"] == "2026-07-20"
+    # timestamptz reloads in the session time zone — compare the instant, not the text
+    assert (datetime.fromisoformat(got["date_added"])
+            == datetime.fromisoformat("2026-07-20T22:07:10-07:00"))
+    assert got["review"] == "Spare and devastating."
+    assert got["isbn"] == "0060977825"
+    assert got["num_pages"] == 117
+    assert got["published"] == 1984
+    assert got["cover_url"] == "https://i.gr-assets.com/large.jpg"
+
+
+def test_shelf_accepts_a_book_with_no_metadata(conn):
+    """A feed item carrying none of the optional fields must still persist — the
+    columns are nullable, not a new required contract."""
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+    storage.save_shelf(conn, aid, [{"title": "Dune", "author": "Frank Herbert"}],
+                       np.zeros((1, 8), np.float32), matched=[None])
+    got = storage.load_shelf(conn, aid).books[0]
+    assert got["title"] == "Dune"
+    assert got["read_at"] is None and got["isbn"] is None and got["num_pages"] is None
 
 
 def test_save_and_get_analysis(conn):

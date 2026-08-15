@@ -26,6 +26,23 @@ per-shelf RSS feed — no key, no auth:
 Each item carries title, author, the user's rating, the community average,
 custom shelves, and a description. That is enough for a full taste model.
 
+The feed also carries, and the importer keeps (ops.actionables:131533), the
+user's read date and date added, their written review, the ISBN, the page count,
+the publication year, and four cover-image sizes. The ISBN is the load-bearing
+one: it gives downstream consumers (Calibre, `reading.texts.goodreads_id`) a
+deterministic crosswalk instead of fuzzy title matching.
+
+**`read_at` is a cataloguing date, not a finish date.** Goodreads stamps it when
+the shelf entry is marked read, so one bulk-marking session stamps many books
+with a single day. Read it as "read by", never "read on".
+
+One book can appear as several Goodreads *editions*. `rss.dedupe_editions`
+collapses them into one entry before storage: the edition with a read date wins
+(then the higher rating), and the losers' non-empty fields are merged into it, so
+an ISBN held only by the losing edition still survives. The collapse is reported
+(log line + `n_duplicate_editions` in the analyze response) — it used to happen
+silently in the insert's `ON CONFLICT DO NOTHING`.
+
 ## Components (each independently testable)
 
 ### 1. Dataset builder — `scripts/build_index.py` (one-time, offline)
@@ -62,7 +79,8 @@ interactively.
 ### 5. Storage — Postgres `books.*` (aurora :5435)
 - `books.accounts` — goodreads user id/url, label, added_at.
 - `books.shelf_books` — per account: title, author, myrating, avg, shelves, desc,
-  embedding (`vector(768)`), matched book_id.
+  embedding (`vector(768)`), matched book_id, plus the feed metadata: read_at,
+  date_added, review, isbn, num_pages, published, cover_url.
 - `books.analyses` — cached taste profile + neighbor recs (JSONB), computed_at.
 Re-open is instant; multiple accounts persist.
 
