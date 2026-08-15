@@ -80,7 +80,27 @@ def connect() -> psycopg.Connection:
     return psycopg.connect(DSN)
 
 
+def schema_present(conn: psycopg.Connection | None = None) -> bool:
+    """Read-only check — never issues DDL, so it needs no CREATE grant.
+
+    Postgres checks CREATE-on-database before an IF NOT EXISTS DDL statement's
+    own short-circuit, so a job role without CREATE (e.g. ops_wrapper) is
+    denied even when the schema already exists (ops.actionables:315969).
+    """
+    own = conn is None
+    conn = conn or connect()
+    try:
+        row = conn.execute("SELECT to_regclass('books.vetoes')").fetchone()
+        return row is not None and row[0] is not None
+    finally:
+        if own:
+            conn.close()
+
+
 def init_schema(conn: psycopg.Connection | None = None):
+    """Migration-time bootstrap/upgrade — run explicitly (`python -m bookmatch.storage`),
+    never as an app-start or test-setup side effect. Requires CREATE on the database
+    (the `livingos` role), which app/test job roles do not and should not hold."""
     own = conn is None
     conn = conn or connect()
     try:
@@ -89,6 +109,22 @@ def init_schema(conn: psycopg.Connection | None = None):
     finally:
         if own:
             conn.close()
+
+
+def ensure_schema_ready(conn: psycopg.Connection | None = None) -> None:
+    """App-start/test-setup guard: verify only, never mutate. Raises loudly if the
+    schema is genuinely missing — bootstrap it once with `python -m bookmatch.storage`."""
+    if not schema_present(conn):
+        raise RuntimeError(
+            "books.* schema is not present. Run `python -m bookmatch.storage` once "
+            "(as a role with CREATE on the database) to bootstrap it — it is not "
+            "created automatically on app start or test run (ops.actionables:315969)."
+        )
+
+
+if __name__ == "__main__":
+    init_schema()
+    print("bookmatch: books.* schema initialized/upgraded")
 
 
 def upsert_account(conn, user_id: str, label: str, url: str) -> int:
