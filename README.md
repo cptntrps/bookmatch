@@ -1,5 +1,8 @@
 # Book Match
 
+> **Documentation:** `docs/` carries the generated six-doc set (scope, architecture, workflows, data, quality, internals) — read it before reading code. Do not edit; it regenerates nightly.
+
+
 Add a Goodreads account → run analysis → get a taste profile + grounded book
 recommendations → veto the ones you do not want → chat with an agent about what
 that person would like.
