@@ -3,10 +3,10 @@ repo: bookmatch
 program: UNKNOWN
 version: 0.4.0
 doc: 4_DATA_AND_INTEGRATIONS
-generated_at: 2026-08-25T04:46:14Z
-source_head: 6dd70578e0a277f6c2a45c86d00a94f69746eee7
-facts_sha256: 7e7205717909c2d0384752a6fdafe76f99499ccb21ed87943a6ecf97981eb25b
-body_sha256: fee3fb3d5f52567ea9da920e423d214bb7f8b117567fefb9c3930d28c18d06b9
+generated_at: 2026-08-27T04:12:25Z
+source_head: 852ba69c9c7ded2f67567ebd94d60aadddc4f647
+facts_sha256: 1a69aa6705dc37fbcc0148ccfaadc6970b801c866c29074ceb211c34bbd2e329
+body_sha256: f1d273851029fabb1ac3a9af196b06e7ebf4c86e4cab6744ce13f09b6a2da9ab
 pipeline_version: 0.2.0
 mode: draft
 status: pass
@@ -18,43 +18,34 @@ critic_score: 8
 
 # bookmatch — data and integrations
 
-> [!warning]
-> **Documentation:** `docs/` carries the generated six-doc set (scope, architecture, workflows, data, quality, internals) — read it before reading code. Do not edit; it regenerates nightly.
+> [!warning] **Documentation:** `docs/` carries the generated six-doc set (scope, architecture, workflows, data, quality, internals) — read it before reading code. Do not edit; it regenerates nightly.
 
 ## Data owned
 
-| name | kind | database/location | purpose |
-|---|---|---|---|
-| `books` | table | SQLite at `BOOKMATCH_INDEX` | stores book metadata (book_id, title, author) for the neighbor-gap index |
-| `lookup` | table | SQLite at `BOOKMATCH_INDEX` | maps normalized keys to book IDs for lookup |
-| `book_lookup.sqlite` | file | `BOOKMATCH_INDEX` | SQLite database containing `books` and `lookup` tables |
-| `user_item.npz` | file | `BOOKMATCH_INDEX` | sparse user-item rating matrix for collaborative filtering |
-| `meta.json` | file | `BOOKMATCH_INDEX` | metadata about the built index |
+| name | kind | database/location | purpose | migration filename |
+|---|---|---|---|---|
+| `books.v_bookmatch_correctness` | view | Postgres, `books` schema | correctness view for the bookmatch schema | `sql/v_bookmatch_correctness.sql` |
 
 ## Data read
 
-| name | kind | database/location | purpose | owning repo |
+| name | kind | database/location | purpose | migration filename |
 |---|---|---|---|---|
-| `interactions.csv` | file | `BOOKMATCH_RAW` | rated interactions (rating > 0) as collaborative filtering signal | UNKNOWN (fact not harvested) |
-| `book_id_map.csv` | file | `BOOKMATCH_RAW` | remapped book_id to real book_id mapping | UNKNOWN (fact not harvested) |
-| `goodreads_books.json.gz` | file | `BOOKMATCH_RAW` | book metadata streamed into SQLite | UNKNOWN (fact not harvested) |
-| `goodreads_book_authors.json.gz` | file | `BOOKMATCH_RAW` | author ID to name mappings | UNKNOWN (fact not harvested) |
+| `goodreads_interactions.csv` | file | `~/data/goodreads-ucsd/raw` (default, `BOOKMATCH_RAW`) | raw UCSD Goodreads corpus interactions, read in chunks of 20 million rows, keeping only rated interactions (rating > 0) | N/A |
+| `book_id_map.csv` | file | `~/data/goodreads-ucsd/raw` (default, `BOOKMATCH_RAW`) | maps real book IDs to remapped IDs | N/A |
+| `goodreads_books.json.gz` | file | `~/data/goodreads-ucsd/raw` (default, `BOOKMATCH_RAW`) | streamed book records, inserted in batches of 50,000 | N/A |
+| `goodreads_book_authors.json.gz` | file | `~/data/goodreads-ucsd/raw` (default, `BOOKMATCH_RAW`) | author names keyed by `author_id` | N/A |
 
 ## Access
 
-UNKNOWN (fact not harvested). The fact sheet does not state the database or schema access model.
-
-Secrets: UNKNOWN (fact not harvested). The fact sheet does not state which store or key holds credentials, nor how credentials reach the process.
+The `books.*` schema lives in the `livingos` database. The app and test roles call `storage.ensure_schema_ready()`, which verifies only and raises if `books.*` is missing. The database, role, and grant style are UNKNOWN (fact not harvested).
 
 ## Env keys
 
 Connection:
-
-- `BOOKMATCH_RAW` — input data directory for the raw UCSD Goodreads corpus, defaulting to `~/data/goodreads-ucsd/raw`.
-- `BOOKMATCH_INDEX` — output directory for the built index, defaulting to `~/data/goodreads-ucsd/index`.
+- `BOOKMATCH_RAW` — raw data directory, defaults to `~/data/goodreads-ucsd/raw`.
+- `BOOKMATCH_INDEX` — output index directory, defaults to `~/data/goodreads-ucsd/index`.
 
 Behavior:
-
 - `BASE` — UNKNOWN (fact not harvested).
 - `BRANCH` — UNKNOWN (fact not harvested).
 - `DEST` — UNKNOWN (fact not harvested).
@@ -64,15 +55,15 @@ Behavior:
 - `TARGET` — UNKNOWN (fact not harvested).
 
 Paths:
-
-- `LAST_GOOD_FILE` — UNKNOWN (fact not harvested).
+- `BOOKMATCH_RAW` — raw data directory, defaults to `~/data/goodreads-ucsd/raw`.
+- `BOOKMATCH_INDEX` — output index directory, defaults to `~/data/goodreads-ucsd/index`.
 
 ## External integrations
 
 | external system | exchange | direction | transport |
 |---|---|---|---|
-| UCSD Goodreads corpus | downloads four files: interactions CSV, book ID map, books JSON, authors JSON | inbound | HTTP with resume support, curl with retry and timeout options |
+| UCSD Goodreads corpus (Wan & McAuley 2018) | four files: `goodreads_interactions.csv`, `book_id_map.csv`, `goodreads_books.json.gz`, `goodreads_book_authors.json.gz` | download | direct HTTP, resumable (`curl -C -`, `--retry 5`, 2-hour timeout per file) |
 
 ## Consumers
 
-- `deploy.sh` — reads `/api/health` and requires it to report `ok` and `corpus_ready` before considering a deploy healthy; rolls back to the last known-good revision if health checks fail.
+UNKNOWN (fact not harvested).
