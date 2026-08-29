@@ -3,10 +3,10 @@ repo: bookmatch
 program: UNKNOWN
 version: 0.4.0
 doc: 1_SCOPE_AND_PURPOSE
-generated_at: 2026-08-28T04:09:36Z
-source_head: 22a6d643f5918ac9c4e8e9f2b9f9434858f962ad
-facts_sha256: 2dca17f8b77718d7f359bd8475c9a96dd52ce4313459a45d15ea94f22e57d621
-body_sha256: c7f98e8061076aed1cdb40291c017f49dbd50bb11646a2ad6c1a1c49e948a741
+generated_at: 2026-08-29T04:18:50Z
+source_head: 34a6d376322df451eddcc5806c6eefdad7765887
+facts_sha256: 8b50526bc05d7e6790c8624c7ad8cfc187dc1f11cf45fbdbfe167d200a70f056
+body_sha256: 03893a9dd7d53edbf50a423be917258f0908e1c12bfd80528420a4951248e8fc
 pipeline_version: 0.2.0
 mode: draft
 status: pass
@@ -20,27 +20,25 @@ critic_score: 8
 
 ## What it is
 
-bookmatch is a Python service that turns a Goodreads account into a taste profile and grounded book recommendations. It runs as a systemd unit (`bookmatch.service`) on the host `aurora`, serving an HTTP API on port `:8092`. The service is deployed in-place: `deploy.sh` restarts the unit with the merged code from this checkout, then proves health.
+bookmatch is a Python service that builds a book-recommendation index from the UCSD Goodreads corpus and serves a taste-profile and recommendation app. It runs on the host `aurora` as the systemd unit `bookmatch.service`, executing this checkout in place. The service listens on port `:8092` and exposes an `/api/health` endpoint.
 
-The pipeline has two stages. First, `scripts/build_index.py` builds a neighbor-gap index from the raw UCSD Goodreads corpus (Wan & McAuley 2018). It reads rated interactions (rating in 1..5) from `interactions.csv` in chunks of 20 million rows, constructs a scipy CSR matrix of shape `(n_users, n_items)`, and outputs `user_item.npz`, `book_lookup.sqlite`, and `meta.json` to the index directory. The build is idempotent and rewrites the index directory each run.
+The repository contains the application package (`bookmatch/`), a one-time index builder (`scripts/build_index.py`), a dataset downloader (`scripts/download_dataset.sh`), a deploy script (`deploy.sh`), and a systemd unit template (`bookmatch.service.template`). The index builder reads `goodreads_interactions.csv`, `book_id_map.csv`, `goodreads_books.json.gz`, and `goodreads_book_authors.json.gz` from a raw directory, keeping only rated interactions (rating in 1..5) as the collaborative filtering signal. It outputs `user_item.npz`, `book_lookup.sqlite`, and `meta.json` to an index directory, and is idempotent — it rewrites the index directory each run.
 
-Second, the app package (`bookmatch/`) serves the analysis and recommendation flow. It depends on aurora-local services: Ollama (`nomic-embed-text`), the livingos-api gateway (`:8510`), and Postgres (`:5435`). The schema is never created as a side effect of app start or a test run — both call `storage.ensure_schema_ready()`, which verifies only and raises if `books.*` is missing. Run `python3 -m bookmatch.storage` explicitly, as a role that holds CREATE on the database (`livingos`).
-
-The raw corpus is downloaded by `scripts/download_dataset.sh` via direct HTTP with resume support, targeting `~/data/goodreads-ucsd/raw` by default (~6.5 GB, gitignored). The download destination can be overridden by the first script argument. The index build reads raw data from the `BOOKMATCH_RAW` env var (defaulting to `~/data/goodreads-ucsd/raw`) and writes output to `BOOKMATCH_INDEX` (defaulting to `~/data/goodreads-ucsd/index`).
+The dataset downloader fetches four files (interactions, book_id_map, books, book_authors) from `mcauleylab.ucsd.edu` using curl with resume support, retries, and a 2-hour timeout. The raw dataset is approximately 6.5 GB and is stored in a gitignored directory. The service also includes a SQL view `books.v_bookmatch_correctness` that asserts the pipeline produced a grounded result per account.
 
 ## Why it exists
 
-bookmatch recreates the June-2026 Goodreads "impossible insights" rec-engine as a MyApps app. It exists to give an owner a grounded, veto-able recommendation flow: add a Goodreads account, run analysis, get a taste profile plus recommendations, veto unwanted ones, and chat with an agent about what that person would like.
+bookmatch recreates the June-2026 Goodreads "impossible insights" recommendation engine as a MyApps app. It exists to give an owner a recommendation flow: add a Goodreads account, run analysis, get a taste profile plus recommendations, veto unwanted ones, and chat with an agent about what that person would like. Without it, that recommendation capability would be lost.
 
 ## How it is used
 
-- **Owner surfaces:** `deploy.sh` for in-place deployment; `scripts/install_hooks.sh` once per fresh clone to activate the ADR-0020 test gate.
-- **Agent surfaces:** the HTTP API on `:8092`; the capability manifest `cap.bookmatch-recommend` (ADR-0095) in `capability.yaml`.
-- **Automatic consumers:** the correctness surface `books.v_bookmatch_correctness` (ADR-0071), which per account asserts the pipeline produced a grounded result.
+- **Owner surfaces:** `deploy.sh` deploys in-place — it refuses to deploy unless the current branch is `main`, the working tree is clean, and `HEAD` matches `origin/main`; it restarts the `bookmatch` systemd service using `sudo -n`, checks health by requiring both `ok` and `corpus_ready` from `/api/health`, records the deployed revision in `.deploy-last-good` on success, and rolls back to the last known-good revision if health checks fail.
+- **Agent surfaces:** `scripts/build_index.py` builds the neighbor-gap index from the raw UCSD Goodreads corpus; `scripts/download_dataset.sh` downloads the corpus; `scripts/install_hooks.sh` activates the tracked git hooks by setting `core.hooksPath` to `.githooks`.
+- **Automatic consumers:** the SQL view `books.v_bookmatch_correctness` is the correctness surface; the capability manifest `capability.yaml` declares `cap.bookmatch`.
 
 ## Boundaries
 
-- **Owns:** the neighbor-gap index build from the UCSD corpus; the taste-profile and recommendation pipeline; the `books.*` schema; the in-place deploy and health proof.
-- **Never does:** download the corpus as part of app start — the dataset download is a separate one-time script, because the schema and index are bootstrapped explicitly, never as a side effect. It never creates the schema on app start or test run — `storage.ensure_schema_ready()` verifies only and raises if `books.*` is missing, because the app and test job roles do not hold CREATE.
-- **Escalates to owner:** any deploy that fails health checks — `deploy.sh` rolls back to the last known-good revision but still exits 1, requiring owner attention. Any push that fails the pre-push test gate — the hook aborts the push before the bare remote sees the ref.
-- **Owner:** `UNKNOWN (fact not harvested)`.
+- **Owns:** the book-recommendation index build, the taste-profile and recommendation app, the deploy and rollback process, the correctness view `books.v_bookmatch_correctness`, and the git hook test gate (ADR-0020).
+- **Never does:** never creates the schema as a side effect of app start or a test run — `storage.ensure_schema_ready()` verifies only and raises if `books.*` is missing; the schema must be bootstrapped explicitly. Never deploys from a non-`main` branch, a dirty working tree, or a `HEAD` that does not match `origin/main` — deploy.sh refuses all three. Never exits zero after a failed deploy — even a successful rollback exits non-zero, marking the deploy as failed.
+- **Escalates to owner:** any deploy that fails health checks — deploy.sh rolls back to the last known-good revision and exits non-zero, requiring owner attention.
+- **Owner:** UNKNOWN (fact not harvested).
