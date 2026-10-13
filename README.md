@@ -28,6 +28,9 @@ Full design: [DESIGN.md](DESIGN.md).
   `scripts/install_hooks.sh` once per fresh clone.
 
 ## Run (dev)
+Keep the platform `livingos-api` checkout at `$HOME/src/products/livingos-api`.
+The requirements install includes its pinned private client wheel automatically.
+
 ```
 pip install -r requirements.txt
 python3 -m bookmatch.storage            # one-time, bootstrap/upgrade the books.* schema
@@ -55,3 +58,13 @@ push/PR; the pre-push hook runs the same suite locally. That hook re-execs itsel
 under `gate_capture.sh`, so a local red — which aborts the push before the bare remote
 sees the ref — still records its verdict in `ops.gate_run`. The wrapper returns the
 wrapped exit code unchanged, and degrades to an unwrapped run if the recorder is absent.
+
+## Shared capability dependency
+
+With the platform checkout at `$HOME/src/products/livingos-api`, the normal
+`python -m pip install -r requirements.txt` installs `livingos-client` 0.1.0
+from its bundled wheel and verifies its SHA-256. Run pip with the interpreter
+that runs this consumer. No separate wheel
+copy, cache setup or client-install command is needed. A fresh machine or CI
+job checks out the private owning repository at that standard path first; the
+client is not fetched from public PyPI. The wheel has no third-party dependencies.
