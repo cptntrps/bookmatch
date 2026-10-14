@@ -6,7 +6,7 @@
 # start into /run/bookmatch/secrets.env by the sops drop-in — install BOTH this unit AND
 # platform-secrets deploy/bookmatch-sops.conf (as bookmatch.service.d/sops.conf). No plaintext
 # .env exists on the services plane anymore.
-# Install:  sudo install -Dm644 THIS /etc/systemd/system/bookmatch.service && sudo install -Dm644 ~/platform/secrets/deploy/bookmatch-sops.conf /etc/systemd/system/bookmatch.service.d/sops.conf && sudo systemctl daemon-reload && sudo systemctl enable --now bookmatch
+# Install:  sudo install -Dm644 THIS /etc/systemd/system/bookmatch.service && sudo install -Dm644 ~/src/infrastructure-secrets/deploy/bookmatch-sops.conf /etc/systemd/system/bookmatch.service.d/sops.conf && sudo systemctl daemon-reload && sudo systemctl enable --now bookmatch
 # Rollback: sudo systemctl disable --now bookmatch && sudo rm -r /etc/systemd/system/bookmatch.service /etc/systemd/system/bookmatch.service.d && sudo systemctl daemon-reload
 # Logs:     journalctl -u bookmatch -f
 
@@ -24,7 +24,7 @@ StartLimitBurst=5
 Type=simple
 User=gui
 Group=gui
-WorkingDirectory=/home/gui/products/bookmatch
+WorkingDirectory=/home/gui/src/products/bookmatch
 # Env comes from the sops drop-in (bookmatch.service.d/sops.conf -> /run/bookmatch/secrets.env).
 ExecStart=/home/gui/.local/bin/uvicorn bookmatch.app:app --host 0.0.0.0 --port 8092
 Restart=on-failure
