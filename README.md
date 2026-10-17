@@ -125,8 +125,17 @@ python -m bookmatch.storage                                      # bootstrap boo
 uvicorn bookmatch.app:app --port 8092                            # http://localhost:8092
 ```
 
-Add a Goodreads profile URL or user id in the page, run the analysis, veto what you
-do not want, chat. Shelves are read from Goodreads' public per-shelf RSS feeds; a
+Add a Goodreads profile URL or user id in the page, run the analysis, give verdicts on
+the candidates, chat.
+
+**Verdicts.** Each candidate takes one of four one-tap verdicts, and each does something
+different to the model: *Want to read* keeps it on your list; *Read it* adds it to the
+shelf as a read book; *Didn't like it* adds it to the shelf with a low rating, a negative
+signal for the taste axis and the neighbour search; *Not interested* hides it. The last
+two kinds join the shelf at the next analysis. Every verdict is undoable from a toast and
+from the decided lists, and every change, undo included, is appended to
+`books.verdict_events`. The store deliberately has no snooze state: an undecided
+candidate simply stays in the list. Shelves are read from Goodreads' public per-shelf RSS feeds; a
 private profile is reported as an error, never as an empty result.
 
 ## Configuration
@@ -150,7 +159,9 @@ private profile is reported as an error, never as an empty result.
 | `POST` | `/api/accounts/{id}/analyze` | fetch shelf, embed, match, recommend, store |
 | `GET` | `/api/accounts/{id}` | cached profile and recommendations |
 | `POST` | `/api/accounts/{id}/axis` | project shelf and candidates on an axis (`label`, `positive[]`, `negative[]`) |
-| `POST` / `DELETE` | `/api/accounts/{id}/veto` | hide / unhide a recommendation, persistently |
+| `POST` | `/api/accounts/{id}/verdict` | `want`, `read`, `disliked` or `not_interested` on a candidate (`title`, `author`, `verdict`) |
+| `DELETE` | `/api/accounts/{id}/verdict` | undo a verdict (`title`, `author`) |
+| `POST` / `DELETE` | `/api/accounts/{id}/veto` | v0.4 alias for the `not_interested` verdict |
 | `POST` | `/api/accounts/{id}/chat` | talk to the agent (`message`, `history`) |
 | `GET` | `/api/health` | `ok` and whether the corpus index is loaded |
 

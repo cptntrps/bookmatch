@@ -125,6 +125,37 @@ def test_veto_persists_across_reanalysis_and_ingest(conn):
     assert storage.vetoed_keys(conn, aid) == set()
 
 
+def test_verdicts_replace_each_other_undo_and_log(conn):
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+    first = storage.set_verdict(conn, aid, "Hyperion", "Dan Simmons", "want")
+    assert first["verdict"] == "want"
+    # a later verdict on the same book replaces the current one
+    storage.set_verdict(conn, aid, "Hyperion", "Dan Simmons", "disliked")
+    current = {v["normkey"]: v["verdict"] for v in storage.list_verdicts(conn, aid)}
+    assert current == {"hyperion|simmons": "disliked"}
+    assert storage.decided_keys(conn, aid) == {"hyperion|simmons"}
+    # undo returns the book to the candidates
+    assert storage.clear_verdict(conn, aid, "Hyperion", "Dan Simmons") is True
+    assert storage.clear_verdict(conn, aid, "Hyperion", "Dan Simmons") is False
+    assert storage.decided_keys(conn, aid) == set()
+    # every step is in the append-only log, undo included
+    actions = [r[0] for r in conn.execute(
+        "SELECT action FROM books.verdict_events WHERE account_id=%s ORDER BY id", (aid,)).fetchall()]
+    assert actions == ["want", "disliked", "undo"]
+    with pytest.raises(ValueError):
+        storage.set_verdict(conn, aid, "X", "Y", "maybe")
+
+
+def test_legacy_vetoes_migrate_to_not_interested(conn):
+    aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
+    conn.execute("INSERT INTO books.vetoes (account_id, normkey, title, author) VALUES (%s,%s,%s,%s)",
+                 (aid, "ready player one|cline", "Ready Player One", "Ernest Cline")); conn.commit()
+    assert storage.migrate_vetoes(conn) >= 1
+    assert storage.migrate_vetoes(conn) == 0              # idempotent
+    got = storage.list_vetoes(conn, aid)
+    assert got and got[0]["verdict"] == "not_interested"
+
+
 def test_list_vetoes(conn):
     aid = storage.upsert_account(conn, TEST_USER, "Test Reader", "http://x")
     storage.add_veto(conn, aid, "Ready Player One", "Ernest Cline")

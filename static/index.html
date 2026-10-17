@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Book Match</title>
 <meta name="description" content="A taste engine for one person's library: embeddings, neighbour-gap recommendations, and any axis you can name.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%230f1b17%27/%3E%3Cpath d=%27M8 7h5a3 3 0 0 1 3 3v15a2 2 0 0 0-2-2H8zM24 7h-5a3 3 0 0 0-3 3v15a2 2 0 0 1 2-2h6z%27 fill=%27%23cfa75a%27/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -45,13 +46,14 @@
   .chip[aria-pressed="true"] { border-color: var(--brass); background: var(--surface); }
   .chip.add { color: var(--muted); }
 
-  main { max-width: 1180px; margin: 0 auto; padding: 1.4rem 1.5rem 3rem; }
+  main { max-width: 1180px; margin: 0 auto; padding: 1.4rem 1.5rem 5rem; }
   .eyebrow { font-family: var(--mono); font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--brass-dim); margin: 0 0 .6rem; }
   h2.title { font-family: var(--display); font-weight: 500; font-size: 1.35rem; margin: 0 0 .25rem; }
   .hint { color: var(--muted); margin: 0 0 .9rem; max-width: 60ch; }
   .notice { border-radius: 8px; padding: .6rem .8rem; margin: .8rem 0; border: 1px solid var(--line-strong); background: var(--surface); }
   .notice.error { border-color: var(--red); color: #f2c7b3; }
   .notice.warn { border-color: var(--brass-dim); color: #e6d2a4; }
+  .notice .row { align-items: center; justify-content: space-between; }
   .empty { display: grid; place-items: center; min-height: 50vh; text-align: center; }
   .empty h1 { font-family: var(--display); font-weight: 400; font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.05; margin: 0 0 .8rem; max-width: 22ch; }
   .empty h1 em { color: var(--brass); font-style: italic; }
@@ -103,15 +105,37 @@
   .card li .r { font-family: var(--mono); font-size: .75rem; color: var(--muted); white-space: nowrap; }
   .card li .r.loved { color: var(--red); }
 
-  /* candidates */
+  /* candidates and verdicts */
   .cands { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; margin-bottom: 1.2rem; }
-  .cand-row { display: grid; grid-template-columns: 1fr 220px auto; gap: 1rem; align-items: center; padding: .45rem 0; border-bottom: 1px solid var(--line); }
+  .cand-row { display: grid; grid-template-columns: 1fr 220px; gap: .3rem 1rem; align-items: center; padding: .55rem 0; border-bottom: 1px solid var(--line); }
   .cand-row:last-child { border-bottom: 0; }
   .cand-row .a { color: var(--muted); font-size: .82rem; display: block; }
   .support { display: grid; gap: .2rem; }
   .support .bar { height: 4px; background: var(--raise); border-radius: 2px; overflow: hidden; }
   .support .bar i { display: block; height: 100%; width: var(--w); background: var(--brass); }
   .support small { font-family: var(--mono); font-size: .68rem; color: var(--muted); white-space: nowrap; }
+  .verdicts { grid-column: 1 / -1; display: flex; gap: .35rem; flex-wrap: wrap; }
+  .verdicts button { font-size: .78rem; padding: .22rem .65rem; border-radius: 999px; background: transparent; color: var(--muted); }
+  .verdicts button:hover, .verdicts button:focus-visible { color: var(--ink); }
+  .verdicts button[data-v="want"]:hover { border-color: var(--brass); color: var(--brass); }
+  .verdicts button[data-v="read"]:hover { border-color: var(--ink); }
+  .verdicts button[data-v="disliked"]:hover { border-color: var(--red); color: var(--red); }
+  .verdicts button[data-v="not_interested"] { border-color: transparent; }
+  .cand-row.leaving { opacity: 0; transform: translateX(8px); transition: opacity .25s, transform .25s; }
+  .decided details { border-top: 1px solid var(--line); padding: .35rem 0; }
+  .decided details:first-of-type { border-top: 0; }
+  .decided summary { cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; list-style: none; }
+  .decided summary::-webkit-details-marker { display: none; }
+  .decided summary .n { font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+  .decided summary .label { font-family: var(--display); font-size: 1.05rem; }
+  .decided summary.v-want .label { color: var(--brass); }
+  .decided summary.v-disliked .label { color: var(--red); }
+  .decided ol { list-style: none; margin: 0 0 .4rem; padding: 0; }
+  .decided li { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .3rem 0; font-size: .88rem; border-top: 1px dashed var(--line); }
+  .decided li .who { flex: 1; min-width: 12rem; }
+  .decided li .a { color: var(--muted); font-size: .8rem; }
+  .decided li .when { font-family: var(--mono); font-size: .68rem; color: var(--faded); }
+  .decided li button { font-size: .75rem; padding: .18rem .55rem; border-radius: 999px; }
 
   /* chat */
   .chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; }
@@ -124,6 +148,14 @@
   .examples { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .5rem; }
   .examples button { font-size: .78rem; padding: .22rem .55rem; border-radius: 999px; color: var(--muted); }
 
+  /* toast with undo */
+  .toast { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); display: flex; gap: .8rem; align-items: center;
+           background: var(--ink); color: var(--bg); padding: .6rem .9rem .6rem 1rem; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,.45); z-index: 20; max-width: min(92vw, 560px); }
+  .toast[hidden] { display: none; }
+  .toast button { background: var(--bg); color: var(--ink); border-color: var(--bg); padding: .3rem .7rem; border-radius: 999px; font-weight: 600; }
+  .toast button[hidden] { display: none; }
+  .toast .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 12px; padding: 1.2rem 1.3rem; width: min(440px, 92vw); }
   dialog::backdrop { background: rgba(5, 10, 8, .7); }
   dialog h2 { font-family: var(--display); font-weight: 500; margin: 0 0 .3rem; }
@@ -132,13 +164,13 @@
   dialog .actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
 
   @media (max-width: 720px) {
-    .top { padding: .9rem 1rem; } main { padding: 1rem 1rem 2.5rem; }
+    .top { padding: .9rem 1rem; } main { padding: 1rem 1rem 5rem; }
     .readers { margin-left: 0; }
     .axis-form { grid-template-columns: 1fr; } .axis-form .vs { text-align: center; }
     .ends { grid-template-columns: 1fr; } .ends .right { text-align: left; }
     .cand-row { grid-template-columns: 1fr; gap: .4rem; }
   }
-  @media (prefers-reduced-motion: reduce) { .spectrum.fresh .tick, .spectrum.fresh .cand { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .spectrum.fresh .tick, .spectrum.fresh .cand { animation: none; } .cand-row.leaving { transition: none; } }
 </style>
 </head>
 <body>
@@ -147,6 +179,7 @@
   <nav class="readers" id="readers" aria-label="Readers"></nav>
 </header>
 <main id="main"><div class="empty"><div><p class="eyebrow">Loading</p></div></div></main>
+<div class="toast" id="toast" hidden role="status"><span class="t" id="toastText"></span><button id="toastUndo">Undo</button></div>
 
 <dialog id="addDialog">
   <h2>Add a reader</h2>
@@ -170,14 +203,23 @@ const PRESETS = [
   ['Summer vs winter', ['summer, heat, the sea, holidays'], ['winter, snow, cold, long nights']],
   ['Experimental vs conventional', ['experimental form, fragmented, avant-garde'], ['conventional, plot-driven, straightforward']],
 ];
-let readers = [], sel = null, history = [];
+// verdicts: what each one does is written where the reader decides, not in a help page
+const VERDICTS = [
+  ['want', 'Want to read', 'kept on your list'],
+  ['read', 'Read it', 'joins your shelf as read'],
+  ['disliked', "Didn't like it", 'joins your shelf with a low rating'],
+  ['not_interested', 'Not interested', 'hidden'],
+];
+const VLABEL = Object.fromEntries(VERDICTS.map(v => [v[0], v[1]]));
+let readers = [], sel = null, history = [], current = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok) { const e = await r.json().catch(() => ({detail: r.statusText})); throw new Error(e.detail || r.statusText); }
   return r.json();
 }
-const post = (path, body) => api(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+const call = (method, path, body) => api(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+const post = (path, body) => call('POST', path, body);
 
 // ---------- readers ----------
 async function loadReaders() {
@@ -191,14 +233,15 @@ async function loadReaders() {
 async function select(a) {
   sel = a; history = [];
   await loadReaders();
-  const d = await api('/api/accounts/' + a.id);
-  render(a, d.analysis);
+  current = await api('/api/accounts/' + a.id);
+  render(a, current);
 }
 
 // ---------- rendering ----------
 const rating = r => r ? `<span class="r ${r >= 4 ? 'loved' : ''}">${r.toFixed(0)} / 5</span>` : '<span class="r">unrated</span>';
 const bookLi = b => `<li><span>${esc(b.title)}<span class="a">${esc(b.author)}</span></span>${rating(b.myrating)}</li>`;
 const nameSpan = b => `${esc(b.title)} <span class="a">${esc(b.author)}</span>`;
+const day = iso => iso ? new Date(iso).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '';
 
 function renderEmpty(a) {
   $('#main').innerHTML = `<div class="empty"><div>
@@ -213,11 +256,11 @@ function renderEmpty(a) {
   else $('#openAdd2').onclick = () => $('#addDialog').showModal();
 }
 
-function render(a, analysis) {
+function render(a, d) {
+  const analysis = d.analysis;
   if (!analysis) return renderEmpty(a);
-  const p = analysis.profile, recs = analysis.recs || [];
+  const p = analysis.profile;
   const matched = Math.round(analysis.match_rate * 100);
-  const maxSup = Math.max(1, ...recs.map(r => r.n_supporters || 0));
   $('#main').innerHTML = `
     <div class="reader">
       <h1>${esc(a.label)}</h1>
@@ -248,16 +291,8 @@ function render(a, analysis) {
       <div class="card"><p class="eyebrow">Blind spot</p><ol>${(p.blind_spot || []).map(bookLi).join('')}</ol></div>
     </section>
 
-    <section class="cands" aria-labelledby="candTitle">
-      <p class="eyebrow">Neighbour gap</p>
-      <h2 class="title" id="candTitle">What readers nearest to ${esc(a.label)} love, that this shelf lacks</h2>
-      <p class="hint">Scored over the ${esc(matched)}% of the shelf found in the corpus. The bar is how many of the hundred nearest readers rated it four stars or more.</p>
-      ${recs.length ? recs.map((r, i) => `<div class="cand-row" data-i="${i}">
-          <div>${nameSpan(r)}</div>
-          <div class="support"><div class="bar"><i style="--w:${Math.round(100 * (r.n_supporters || 0) / maxSup)}%"></i></div><small>${esc(r.n_supporters)} of 100 nearest readers</small></div>
-          <button class="quiet veto">Not interested</button>
-        </div>`).join('') : '<p class="hint">No candidates left. Re-analyze to refresh them.</p>'}
-    </section>
+    <section class="cands" aria-labelledby="candTitle" id="cands"></section>
+    <section class="cands decided" aria-labelledby="decTitle" id="decided"></section>
 
     <section class="chat" aria-labelledby="chatTitle">
       <p class="eyebrow">Ask</p>
@@ -278,18 +313,86 @@ function render(a, analysis) {
     const [, pos, neg] = PRESETS[b.dataset.p];
     $('#pos').value = pos.join(', '); $('#neg').value = neg.join(', '); plotAxis(a);
   });
-  document.querySelectorAll('.cand-row .veto').forEach(btn => btn.onclick = async () => {
-    const r = recs[Number(btn.closest('.cand-row').dataset.i)];
-    btn.disabled = true; btn.textContent = 'Hidden';
-    try { await post('/api/accounts/' + a.id + '/veto', {title: r.title, author: r.author});
-      const d = await api('/api/accounts/' + a.id); render(a, d.analysis);
-    } catch (e) { btn.disabled = false; btn.textContent = 'Not interested'; notice(e.message); }
-  });
+  renderDecisions(a, d);
   $('#send').onclick = send;
   $('#msg').onkeydown = e => { if (e.key === 'Enter') send(); };
   document.querySelectorAll('.examples button').forEach(b => b.onclick = () => { $('#msg').value = b.textContent; send(); });
   // the signature draws itself: first preset, on load
   const [, pos, neg] = PRESETS[0]; $('#pos').value = pos.join(', '); $('#neg').value = neg.join(', '); plotAxis(a);
+}
+
+// candidates and the decided lists re-render on their own after a verdict; axis and profile stay put
+function renderDecisions(a, d) {
+  const recs = (d.analysis && d.analysis.recs) || [];
+  const matched = Math.round((d.analysis ? d.analysis.match_rate : 0) * 100);
+  const maxSup = Math.max(1, ...recs.map(r => r.n_supporters || 0));
+  $('#cands').innerHTML = `
+    <p class="eyebrow">Neighbour gap</p>
+    <h2 class="title" id="candTitle">What readers nearest to ${esc(a.label)} love, that this shelf lacks</h2>
+    <p class="hint">Scored over the ${matched}% of the shelf found in the corpus. The bar is how many of the hundred nearest readers rated it four stars or more. Decide with one tap; every verdict can be undone.</p>
+    ${recs.length ? recs.map((r, i) => `<div class="cand-row" data-i="${i}">
+        <div>${nameSpan(r)}</div>
+        <div class="support"><div class="bar"><i style="--w:${Math.round(100 * (r.n_supporters || 0) / maxSup)}%"></i></div><small>${esc(r.n_supporters)} of 100 nearest readers</small></div>
+        <div class="verdicts" role="group" aria-label="Your verdict on ${esc(r.title)}">
+          ${VERDICTS.map(([v, label, effect]) => `<button type="button" data-v="${v}" title="${esc(effect)}">${esc(label)}</button>`).join('')}
+        </div>
+      </div>`).join('') : '<p class="hint">Every candidate has a verdict. Re-analyze to bring a fresh set.</p>'}`;
+  document.querySelectorAll('#cands .verdicts button').forEach(btn => btn.onclick = () => {
+    const row = btn.closest('.cand-row'); const r = recs[Number(row.dataset.i)];
+    row.classList.add('leaving');
+    decide(a, r, btn.dataset.v);
+  });
+
+  const g = d.verdicts || {};
+  const total = VERDICTS.reduce((n, [v]) => n + (g[v] || []).length, 0);
+  const pending = d.pending_shelf_changes || 0;
+  $('#decided').innerHTML = `
+    <p class="eyebrow">Your verdicts</p>
+    <h2 class="title" id="decTitle">${total ? `${total} decided` : 'Nothing decided yet'}</h2>
+    ${pending ? `<div class="notice warn"><div class="row"><span>${pending} "read" or "didn't like" verdict${pending > 1 ? 's' : ''} will join the shelf at the next analysis.</span><button class="quiet" id="runPending">Re-analyze now</button></div></div>` : ''}
+    ${VERDICTS.map(([v, label, effect]) => {
+      const rows = g[v] || [];
+      return `<details ${v === 'want' && rows.length ? 'open' : ''}>
+        <summary class="v-${v}"><span class="label">${esc(label)}</span><span class="n">${rows.length} · ${esc(effect)}</span></summary>
+        ${rows.length ? `<ol>${rows.map((b, i) => `<li data-v="${v}" data-i="${i}">
+            <span class="who">${esc(b.title)} <span class="a">${esc(b.author)}</span></span>
+            <span class="when">${day(b.decided_at)}</span>
+            ${v === 'want' ? `<button type="button" data-to="read">Read it</button><button type="button" data-to="disliked">Didn't like it</button>` : ''}
+            <button type="button" class="quiet" data-to="undo">Undo</button>
+          </li>`).join('')}</ol>` : ''}
+      </details>`; }).join('')}`;
+  if (pending) $('#runPending').onclick = () => runAnalyze(a);
+  document.querySelectorAll('#decided li button').forEach(btn => btn.onclick = () => {
+    const li = btn.closest('li'); const b = (g[li.dataset.v] || [])[Number(li.dataset.i)];
+    if (btn.dataset.to === 'undo') undo(a, b, true); else decide(a, b, btn.dataset.to);
+  });
+}
+
+// ---------- verdicts ----------
+let toastTimer = null, toastUndo = null;
+function toast(text, onUndo) {
+  $('#toastText').textContent = text; toastUndo = onUndo;
+  $('#toastUndo').hidden = !onUndo;
+  $('#toast').hidden = false; clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $('#toast').hidden = true; toastUndo = null; }, 7000);
+}
+$('#toastUndo').onclick = () => { const f = toastUndo; $('#toast').hidden = true; toastUndo = null; if (f) f(); };
+async function refreshDecisions(a) {
+  current = await api('/api/accounts/' + a.id); renderDecisions(a, current);
+}
+async function decide(a, book, v) {
+  try {
+    await post('/api/accounts/' + a.id + '/verdict', {title: book.title, author: book.author || '', verdict: v});
+    await refreshDecisions(a);
+    toast(`${book.title}: ${VLABEL[v]}`, () => undo(a, book, false));
+  } catch (e) { notice(e.message); await refreshDecisions(a); }
+}
+async function undo(a, book, say) {
+  try {
+    await call('DELETE', '/api/accounts/' + a.id + '/verdict', {title: book.title, author: book.author || ''});
+    await refreshDecisions(a);
+    if (say) toast(`${book.title}: back among the candidates`, null);
+  } catch (e) { notice(e.message); }
 }
 
 // ---------- the axis ----------
