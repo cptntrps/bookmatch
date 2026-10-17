@@ -4,168 +4,382 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Book Match</title>
+<meta name="description" content="A taste engine for one person's library: embeddings, neighbour-gap recommendations, and any axis you can name.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
+  /* Library green, warm paper, brass fittings, red ink for what the reader loves. */
+  :root {
+    color-scheme: dark;
+    --bg: #0f1b17; --surface: #152420; --raise: #1b2e28;
+    --line: #2a3f36; --line-strong: #3a5449;
+    --ink: #ebe6da; --muted: #96a59b; --faded: #627a70;
+    --brass: #cfa75a; --brass-dim: #8a6f3b; --red: #e06a3a;
+    --display: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --radius: 10px;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
-  header { padding: 1.4rem 2rem 0.6rem; display: flex; align-items: baseline; gap: .6rem; }
-  h1 { margin: 0; font-size: 1.5rem; } h1 small { color: #8a8f98; font-weight: normal; font-size: .9rem; }
-  .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; padding: 0 2rem 2rem; }
-  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 12px; padding: 1rem 1.1rem; }
-  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: #8a8f98; margin: .2rem 0 .8rem; }
-  input, button, textarea { font: inherit; }
-  input, textarea { width: 100%; background: #0f1115; border: 1px solid #2a2e37; color: #e6e6e6; border-radius: 8px; padding: .5rem .6rem; margin-bottom: .5rem; }
-  button { background: #4a9eff; color: #06121f; border: 0; border-radius: 8px; padding: .5rem .9rem; font-weight: 600; cursor: pointer; }
-  button.ghost { background: #23272f; color: #e6e6e6; }
-  button:disabled { opacity: .5; cursor: default; }
-  .acct { padding: .5rem .6rem; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-  .acct:hover { background: #23272f; } .acct.sel { border-color: #4a9eff; background: #202634; }
-  .acct .lbl { font-weight: 600; } .acct .sub { font-size: .72rem; color: #8a8f98; }
-  .warn { background: #3a2a12; border: 1px solid #d9a441; color: #f0c674; padding: .5rem .7rem; border-radius: 8px; font-size: .82rem; margin-bottom: .8rem; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .book { font-size: .82rem; padding: .18rem 0; border-bottom: 1px solid #20242c; }
-  .book .a { color: #8a8f98; }
-  .rec { font-size: .86rem; padding: .3rem 0; border-bottom: 1px solid #20242c; }
-  .rec .meta { color: #8a8f98; font-size: .72rem; }
-  #chatlog { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; margin-bottom: .6rem; }
-  .msg { padding: .5rem .7rem; border-radius: 10px; font-size: .9rem; white-space: pre-wrap; line-height: 1.4; }
-  .msg.user { background: #202634; align-self: flex-end; max-width: 80%; }
-  .msg.bot { background: #191c22; border: 1px solid #2a2e37; }
+  html { background: var(--bg); }
+  body { margin: 0; font: 15px/1.5 var(--body); color: var(--ink); background: var(--bg); min-height: 100vh; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 4px; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line-strong); background: var(--raise); border-radius: 8px; padding: .5rem .9rem; }
+  button.primary { background: var(--brass); border-color: var(--brass); color: #1b1407; font-weight: 600; }
+  button.quiet { background: transparent; border-color: transparent; color: var(--muted); padding: .3rem .5rem; }
+  button.quiet:hover { color: var(--ink); border-color: var(--line); }
+  button:disabled { opacity: .55; cursor: default; }
+  input { width: 100%; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; padding: .55rem .7rem; }
+  input::placeholder { color: var(--faded); }
+
+  /* top bar: wordmark + readers as library cards */
+  .top { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; padding: 1rem 1.5rem; border-bottom: 1px solid var(--line); }
+  .brand { font-family: var(--display); font-style: italic; font-weight: 400; font-size: 1.55rem; letter-spacing: -.01em; margin: 0; }
+  .brand b { font-style: normal; font-weight: 500; color: var(--brass); }
+  .readers { display: flex; gap: .5rem; flex-wrap: wrap; margin-left: auto; }
+  .chip { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: .35rem .8rem; line-height: 1.2; border-radius: 8px; }
+  .chip small { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+  .chip[aria-pressed="true"] { border-color: var(--brass); background: var(--surface); }
+  .chip.add { color: var(--muted); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 1.4rem 1.5rem 3rem; }
+  .eyebrow { font-family: var(--mono); font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--brass-dim); margin: 0 0 .6rem; }
+  h2.title { font-family: var(--display); font-weight: 500; font-size: 1.35rem; margin: 0 0 .25rem; }
+  .hint { color: var(--muted); margin: 0 0 .9rem; max-width: 60ch; }
+  .notice { border-radius: 8px; padding: .6rem .8rem; margin: .8rem 0; border: 1px solid var(--line-strong); background: var(--surface); }
+  .notice.error { border-color: var(--red); color: #f2c7b3; }
+  .notice.warn { border-color: var(--brass-dim); color: #e6d2a4; }
+  .empty { display: grid; place-items: center; min-height: 50vh; text-align: center; }
+  .empty h1 { font-family: var(--display); font-weight: 400; font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.05; margin: 0 0 .8rem; max-width: 22ch; }
+  .empty h1 em { color: var(--brass); font-style: italic; }
+
+  /* reader head */
+  .reader { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+  .reader h1 { font-family: var(--display); font-weight: 500; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1; margin: 0; letter-spacing: -.01em; }
+  .reader .stats { font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+  .reader .spacer { flex: 1; }
+
+  /* the axis: the page's signature */
+  .axis { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem 1rem; margin-bottom: 1.2rem; }
+  .axis-form { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: .5rem; align-items: center; }
+  .axis-form .vs { font-family: var(--display); font-style: italic; color: var(--muted); padding: 0 .2rem; }
+  .presets { display: flex; gap: .4rem; flex-wrap: wrap; margin: .6rem 0 .2rem; }
+  .presets button { font-size: .8rem; padding: .25rem .6rem; border-radius: 999px; color: var(--muted); }
+  .presets button:hover { color: var(--ink); }
+  .poles-label { display: flex; justify-content: space-between; font-family: var(--display); font-size: 1.05rem; margin: .9rem 0 .1rem; }
+  .poles-label span:last-child { color: var(--brass); }
+  .spectrum { display: block; width: 100%; height: auto; }
+  .spectrum .tick { stroke-linecap: round; }
+  .spectrum .tick.loved { stroke: var(--red); }
+  .spectrum .tick.liked { stroke: var(--ink); opacity: .8; }
+  .spectrum .tick.tolerated { stroke: var(--faded); }
+  .spectrum .cand { fill: var(--surface); stroke: var(--brass); stroke-width: 1.6; }
+  .spectrum.fresh .tick, .spectrum.fresh .cand { animation: rise .45s ease-out both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .legend { display: flex; gap: 1.1rem; flex-wrap: wrap; font-family: var(--mono); font-size: .7rem; color: var(--muted); margin: .2rem 0 .8rem; }
+  .legend i { display: inline-block; width: 10px; height: 10px; margin-right: .35rem; vertical-align: -1px; border-radius: 2px; }
+  .legend .l-loved i { background: var(--red); } .legend .l-liked i { background: var(--ink); opacity: .8; }
+  .legend .l-tol i { background: var(--faded); } .legend .l-cand i { border: 1.6px solid var(--brass); border-radius: 50%; }
+  .agreement { font-family: var(--display); font-style: italic; font-size: 1.05rem; margin: .4rem 0 1rem; color: var(--ink); }
+  .ends { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  .ends .right { text-align: right; }
+  .ends ol { list-style: none; margin: 0; padding: 0; }
+  .ends li { padding: .22rem 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  .ends li .a { color: var(--muted); }
+  .ends li.cand { color: var(--brass); }
+  .ends li.cand .a { color: var(--brass-dim); }
+  .ends .sub { font-family: var(--mono); font-size: .68rem; color: var(--faded); margin: .7rem 0 .2rem; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* profile */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 1.2rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; }
+  .card ol { list-style: none; margin: 0; padding: 0; }
+  .card li { display: grid; grid-template-columns: 1fr auto; gap: .6rem; padding: .3rem 0; border-bottom: 1px solid var(--line); font-size: .88rem; line-height: 1.3; }
+  .card li:last-child { border-bottom: 0; }
+  .card li .a { color: var(--muted); display: block; font-size: .8rem; }
+  .card li .r { font-family: var(--mono); font-size: .75rem; color: var(--muted); white-space: nowrap; }
+  .card li .r.loved { color: var(--red); }
+
+  /* candidates */
+  .cands { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; margin-bottom: 1.2rem; }
+  .cand-row { display: grid; grid-template-columns: 1fr 220px auto; gap: 1rem; align-items: center; padding: .45rem 0; border-bottom: 1px solid var(--line); }
+  .cand-row:last-child { border-bottom: 0; }
+  .cand-row .a { color: var(--muted); font-size: .82rem; display: block; }
+  .support { display: grid; gap: .2rem; }
+  .support .bar { height: 4px; background: var(--raise); border-radius: 2px; overflow: hidden; }
+  .support .bar i { display: block; height: 100%; width: var(--w); background: var(--brass); }
+  .support small { font-family: var(--mono); font-size: .68rem; color: var(--muted); white-space: nowrap; }
+
+  /* chat */
+  .chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; }
+  .log { display: flex; flex-direction: column; gap: .6rem; max-height: 50vh; overflow-y: auto; margin-bottom: .7rem; }
+  .msg { padding: .55rem .8rem; border-radius: 10px; white-space: pre-wrap; line-height: 1.45; max-width: 85%; }
+  .msg.user { background: var(--raise); align-self: flex-end; }
+  .msg.bot { background: var(--bg); border: 1px solid var(--line); align-self: flex-start; }
+  .msg.bot.wait { color: var(--muted); font-style: italic; }
   .row { display: flex; gap: .5rem; }
-  .muted { color: #8a8f98; font-size: .82rem; }
-  .spin { color: #4a9eff; }
+  .examples { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .5rem; }
+  .examples button { font-size: .78rem; padding: .22rem .55rem; border-radius: 999px; color: var(--muted); }
+
+  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 12px; padding: 1.2rem 1.3rem; width: min(440px, 92vw); }
+  dialog::backdrop { background: rgba(5, 10, 8, .7); }
+  dialog h2 { font-family: var(--display); font-weight: 500; margin: 0 0 .3rem; }
+  dialog p { color: var(--muted); margin: 0 0 .9rem; font-size: .9rem; }
+  dialog label { display: block; font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: .6rem 0 .25rem; }
+  dialog .actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+
+  @media (max-width: 720px) {
+    .top { padding: .9rem 1rem; } main { padding: 1rem 1rem 2.5rem; }
+    .readers { margin-left: 0; }
+    .axis-form { grid-template-columns: 1fr; } .axis-form .vs { text-align: center; }
+    .ends { grid-template-columns: 1fr; } .ends .right { text-align: left; }
+    .cand-row { grid-template-columns: 1fr; gap: .4rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .spectrum.fresh .tick, .spectrum.fresh .cand { animation: none; } }
 </style>
 </head>
 <body>
-<header><h1>📚 Book Match</h1><small>Goodreads taste + neighbor-gap recommendations</small></header>
-<div class="wrap">
-  <div>
-    <div class="card">
-      <h2>Add account</h2>
-      <input id="url" placeholder="Goodreads profile/shelf URL or user id">
-      <input id="label" placeholder="Label (e.g. Reader A)">
-      <button id="add">Add</button>
-    </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Accounts</h2>
-      <div id="accts" class="muted">loading…</div>
-    </div>
-  </div>
-  <div>
-    <div id="panel" class="card"><span class="muted">Add or pick an account, then run analysis.</span></div>
-  </div>
-</div>
+<header class="top">
+  <h1 class="brand">Book <b>Match</b></h1>
+  <nav class="readers" id="readers" aria-label="Readers"></nav>
+</header>
+<main id="main"><div class="empty"><div><p class="eyebrow">Loading</p></div></div></main>
+
+<dialog id="addDialog">
+  <h2>Add a reader</h2>
+  <p>Any public Goodreads profile. The shelf is read from its public feed; a private profile is reported, never guessed.</p>
+  <form method="dialog" id="addForm">
+    <label for="url">Goodreads profile URL or user id</label>
+    <input id="url" required placeholder="https://www.goodreads.com/user/show/12345678">
+    <label for="label">Name to show</label>
+    <input id="label" placeholder="e.g. Mom">
+    <div class="actions"><button type="button" class="quiet" id="cancelAdd">Cancel</button><button class="primary" id="confirmAdd">Add reader</button></div>
+  </form>
+</dialog>
+
 <script>
-const $ = s => document.querySelector(s);
-// escape every untrusted string (Goodreads titles/authors, labels, chat input) before it hits innerHTML
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let sel = null, accts = [];
+const $ = (s, el = document) => el.querySelector(s);
+// every untrusted string (titles, authors, labels, model output) is escaped or set as textContent
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PRESETS = [
+  ['French vs American', ['French literature', 'a novel set in France'], ['American literature', 'a novel set in small-town America']],
+  ['Melancholy vs comic', ['melancholy, grief, quiet sorrow'], ['comic, light-hearted, funny']],
+  ['Summer vs winter', ['summer, heat, the sea, holidays'], ['winter, snow, cold, long nights']],
+  ['Experimental vs conventional', ['experimental form, fragmented, avant-garde'], ['conventional, plot-driven, straightforward']],
+];
+let readers = [], sel = null, history = [];
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
-  if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || r.statusText); }
+  if (!r.ok) { const e = await r.json().catch(() => ({detail: r.statusText})); throw new Error(e.detail || r.statusText); }
   return r.json();
 }
-function bookLine(b){ return `<div class="book">${esc(b.title)} <span class="a">— ${esc(b.author)}</span></div>`; }
+const post = (path, body) => api(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
 
-async function loadAccts() {
-  accts = await api('/api/accounts');
-  $('#accts').innerHTML = accts.length ? accts.map(a =>
-    `<div class="acct ${sel&&sel.id===a.id?'sel':''}" data-id="${a.id}">
-       <div class="lbl">${esc(a.label)}</div>
-       <div class="sub">id ${esc(a.user_id)} · ${a.analyzed?'analyzed':'not analyzed'}</div></div>`).join('')
-    : '<span class="muted">none yet</span>';
-  document.querySelectorAll('.acct').forEach(el =>
-    el.onclick = () => select(accts.find(a=>a.id==el.dataset.id)));
+// ---------- readers ----------
+async function loadReaders() {
+  readers = await api('/api/accounts');
+  $('#readers').innerHTML = readers.map(a =>
+    `<button class="chip" data-id="${a.id}" aria-pressed="${sel && sel.id === a.id}">${esc(a.label)}<small>${a.analyzed ? 'analyzed' : 'not analyzed yet'}</small></button>`).join('')
+    + `<button class="chip add" id="openAdd">+ Add reader</button>`;
+  document.querySelectorAll('.chip[data-id]').forEach(el => el.onclick = () => select(readers.find(a => a.id == el.dataset.id)));
+  $('#openAdd').onclick = () => $('#addDialog').showModal();
 }
-
 async function select(a) {
-  sel = a; await loadAccts();
-  const d = await api('/api/accounts/'+a.id);
+  sel = a; history = [];
+  await loadReaders();
+  const d = await api('/api/accounts/' + a.id);
   render(a, d.analysis);
 }
 
+// ---------- rendering ----------
+const rating = r => r ? `<span class="r ${r >= 4 ? 'loved' : ''}">${r.toFixed(0)} / 5</span>` : '<span class="r">unrated</span>';
+const bookLi = b => `<li><span>${esc(b.title)}<span class="a">${esc(b.author)}</span></span>${rating(b.myrating)}</li>`;
+const nameSpan = b => `${esc(b.title)} <span class="a">${esc(b.author)}</span>`;
+
+function renderEmpty(a) {
+  $('#main').innerHTML = `<div class="empty"><div>
+    <p class="eyebrow">${a ? esc(a.label) : 'No reader selected'}</p>
+    <h1>${a ? 'This shelf has not been <em>read</em> yet.' : 'Every shelf has a <em>shape</em>.'}</h1>
+    <p class="hint" style="margin:0 auto 1.2rem">${a
+      ? 'Analysis fetches the public shelf, embeds every book, matches it into a corpus of 876k readers and finds what the nearest ones love that this shelf lacks. About a minute.'
+      : 'Add a Goodreads reader to see what they love, where their taste runs against the crowd, and what readers nearest to them have that they do not.'}</p>
+    ${a ? '<button class="primary" id="run">Analyze shelf</button>' : '<button class="primary" id="openAdd2">Add a reader</button>'}
+  </div></div>`;
+  if (a) $('#run').onclick = () => runAnalyze(a);
+  else $('#openAdd2').onclick = () => $('#addDialog').showModal();
+}
+
 function render(a, analysis) {
-  if (!analysis) {
-    $('#panel').innerHTML = `<h2>${esc(a.label)}</h2>
-      <p class="muted">No analysis yet.</p>
-      <button id="run">Run analysis</button>`;
-    $('#run').onclick = () => runAnalyze(a);
-    return;
-  }
+  if (!analysis) return renderEmpty(a);
   const p = analysis.profile, recs = analysis.recs || [];
-  const warn = analysis.match_rate < 0.4
-    ? `<div class="warn">Only ${(analysis.match_rate*100).toFixed(0)}% of the shelf matched the corpus — recommendations are weak.</div>` : '';
-  $('#panel').innerHTML = `
-    <h2>${esc(a.label)} <button id="run" class="ghost" style="float:right">Re-analyze</button></h2>
-    ${warn}
-    <div class="muted">${p.n_rated} rated · mean ${p.mean_rating} · ${(analysis.match_rate*100).toFixed(0)}% matched</div>
-    <div class="cols" style="margin-top:.8rem">
-      <div><h2>Loves most</h2>${(p.loved||[]).map(bookLine).join('')}</div>
-      <div><h2>Loves more than the crowd</h2>${(p.loves_more_than_world||[]).map(bookLine).join('')}</div>
+  const matched = Math.round(analysis.match_rate * 100);
+  const maxSup = Math.max(1, ...recs.map(r => r.n_supporters || 0));
+  $('#main').innerHTML = `
+    <div class="reader">
+      <h1>${esc(a.label)}</h1>
+      <span class="stats">${p.n_books} books · ${p.n_rated} rated · mean ${p.mean_rating} · ${matched}% found in the corpus</span>
+      <span class="spacer"></span>
+      <button class="quiet" id="run">Re-analyze</button>
     </div>
-    <h2 style="margin-top:1rem">Neighbor-gap recommendations</h2>
-    <div>${recs.map((r,i)=>`<div class="rec" data-i="${i}">
-        <div class="row" style="align-items:flex-start;justify-content:space-between">
-          <div>${esc(r.title)} <span class="a">— ${esc(r.author)}</span>
-            <div class="meta">score ${esc(r.score)} · ${esc(r.n_supporters)} nearby readers love it</div></div>
-          <button class="ghost veto" style="padding:.2rem .5rem;font-size:.72rem" title="not interested">not interested</button>
-        </div></div>`).join('')}</div>
-    <h2 style="margin-top:1rem">Ask about ${esc(a.label)}'s taste</h2>
-    <div id="chatlog"></div>
-    <div class="row"><input id="msg" placeholder="e.g. recommend more sci-fi based on my shelf">
-      <button id="send">Send</button></div>`;
+    ${matched < 40 ? `<div class="notice warn">Only ${matched}% of this shelf matched the corpus, so the recommendations below rest on few neighbours.</div>` : ''}
+
+    <section class="axis" aria-labelledby="axisTitle">
+      <p class="eyebrow">Any axis you can name</p>
+      <h2 class="title" id="axisTitle">Where does this shelf fall between two ideas?</h2>
+      <p class="hint">Name the two poles. Every book, and every candidate below, is placed by a single dot product in the embedding space. Nothing is labelled.</p>
+      <form class="axis-form" id="axisForm">
+        <input id="neg" placeholder="negative pole, e.g. American literature" aria-label="negative pole">
+        <span class="vs">vs</span>
+        <input id="pos" placeholder="positive pole, e.g. French literature" aria-label="positive pole" required>
+        <button class="primary" id="plot">Plot</button>
+      </form>
+      <div class="presets">${PRESETS.map((pr, i) => `<button type="button" data-p="${i}">${esc(pr[0])}</button>`).join('')}</div>
+      <div id="axisOut"></div>
+    </section>
+
+    <section class="grid" aria-label="Taste profile">
+      <div class="card"><p class="eyebrow">Loves most</p><ol>${(p.loved || []).map(bookLi).join('')}</ol></div>
+      <div class="card"><p class="eyebrow">Merely tolerates</p><ol>${(p.tolerated || []).map(bookLi).join('')}</ol></div>
+      <div class="card"><p class="eyebrow">Loves more than the crowd</p><ol>${(p.loves_more_than_world || []).map(bookLi).join('')}</ol></div>
+      <div class="card"><p class="eyebrow">Blind spot</p><ol>${(p.blind_spot || []).map(bookLi).join('')}</ol></div>
+    </section>
+
+    <section class="cands" aria-labelledby="candTitle">
+      <p class="eyebrow">Neighbour gap</p>
+      <h2 class="title" id="candTitle">What readers nearest to ${esc(a.label)} love, that this shelf lacks</h2>
+      <p class="hint">Scored over the ${esc(matched)}% of the shelf found in the corpus. The bar is how many of the hundred nearest readers rated it four stars or more.</p>
+      ${recs.length ? recs.map((r, i) => `<div class="cand-row" data-i="${i}">
+          <div>${nameSpan(r)}</div>
+          <div class="support"><div class="bar"><i style="--w:${Math.round(100 * (r.n_supporters || 0) / maxSup)}%"></i></div><small>${esc(r.n_supporters)} of 100 nearest readers</small></div>
+          <button class="quiet veto">Not interested</button>
+        </div>`).join('') : '<p class="hint">No candidates left. Re-analyze to refresh them.</p>'}
+    </section>
+
+    <section class="chat" aria-labelledby="chatTitle">
+      <p class="eyebrow">Ask</p>
+      <h2 class="title" id="chatTitle">Talk about ${esc(a.label)}'s taste</h2>
+      <p class="hint">The agent knows the shelf and the candidates, and can plot any axis itself before it answers.</p>
+      <div class="log" id="log" aria-live="polite"></div>
+      <div class="row"><input id="msg" placeholder="e.g. something for a long train ride, nothing bleak" aria-label="message"><button class="primary" id="send">Ask</button></div>
+      <div class="examples">
+        <button type="button">What would ${esc(a.label)} think of Elena Ferrante?</button>
+        <button type="button">Pick the three candidates most like what they love.</button>
+        <button type="button">Which of their favourites is least like the rest?</button>
+      </div>
+    </section>`;
+
   $('#run').onclick = () => runAnalyze(a);
-  $('#send').onclick = send;
-  $('#msg').onkeydown = e => { if (e.key==='Enter') send(); };
-  document.querySelectorAll('.rec .veto').forEach(btn => btn.onclick = async () => {
-    const i = Number(btn.closest('.rec').dataset.i);
-    const r = recs[i];
-    btn.disabled = true;
-    try { await api('/api/accounts/'+a.id+'/veto', {method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({title:r.title, author:r.author})});
-      const d = await api('/api/accounts/'+a.id);
-      render(a, d.analysis);
-    } catch(e){ btn.disabled = false; alert(e.message); }
+  $('#axisForm').onsubmit = e => { e.preventDefault(); plotAxis(a); };
+  document.querySelectorAll('.presets button').forEach(b => b.onclick = () => {
+    const [, pos, neg] = PRESETS[b.dataset.p];
+    $('#pos').value = pos.join(', '); $('#neg').value = neg.join(', '); plotAxis(a);
   });
+  document.querySelectorAll('.cand-row .veto').forEach(btn => btn.onclick = async () => {
+    const r = recs[Number(btn.closest('.cand-row').dataset.i)];
+    btn.disabled = true; btn.textContent = 'Hidden';
+    try { await post('/api/accounts/' + a.id + '/veto', {title: r.title, author: r.author});
+      const d = await api('/api/accounts/' + a.id); render(a, d.analysis);
+    } catch (e) { btn.disabled = false; btn.textContent = 'Not interested'; notice(e.message); }
+  });
+  $('#send').onclick = send;
+  $('#msg').onkeydown = e => { if (e.key === 'Enter') send(); };
+  document.querySelectorAll('.examples button').forEach(b => b.onclick = () => { $('#msg').value = b.textContent; send(); });
+  // the signature draws itself: first preset, on load
+  const [, pos, neg] = PRESETS[0]; $('#pos').value = pos.join(', '); $('#neg').value = neg.join(', '); plotAxis(a);
 }
 
-async function runAnalyze(a) {
-  $('#panel').innerHTML = `<h2>${esc(a.label)}</h2><p class="spin">Fetching shelf, embedding, matching corpus, computing recommendations… (can take a minute)</p>`;
-  try { await api('/api/accounts/'+a.id+'/analyze', {method:'POST'});
-    await select(a);
-  } catch(e){ $('#panel').innerHTML = `<div class="warn">${esc(e.message)}</div><button id="run">Retry</button>`;
-    $('#run').onclick=()=>runAnalyze(a); }
+// ---------- the axis ----------
+const split = s => s.split(',').map(t => t.trim()).filter(Boolean);
+function tickClass(r) { return r >= 4 ? 'loved' : r > 0 && r <= 2 ? 'tolerated' : 'liked'; }
+function spectrum(res) {
+  const X = x => 500 + x * 450;
+  const ticks = res.shelf.map(b => {
+    const h = b.myrating ? 14 + b.myrating * 7 : 10;
+    return `<line class="tick ${tickClass(b.myrating)}" x1="${X(b.x).toFixed(1)}" x2="${X(b.x).toFixed(1)}" y1="88" y2="${88 - h}" stroke-width="2"><title>${esc(b.title)} — ${esc(b.author)}${b.myrating ? ` · rated ${b.myrating}` : ''}</title></line>`;
+  }).join('');
+  // candidates sit below the line in three rows; within a row a marker is nudged right of the
+  // previous one when they would overlap, so a crowd still reads as a crowd, not as one dot
+  const rows = [-Infinity, -Infinity, -Infinity];
+  const cands = [...res.candidates].sort((a, b) => a.x - b.x).map((c, i) => {
+    const row = i % 3, cx = Math.max(X(c.x), rows[row] + 12); rows[row] = cx;
+    return `<circle class="cand" cx="${cx.toFixed(1)}" cy="${104 + row * 11}" r="5"><title>candidate: ${esc(c.title)} — ${esc(c.author)}</title></circle>`;
+  }).join('');
+  return `<svg class="spectrum fresh" viewBox="0 0 1000 136" role="img" aria-label="Books placed along the axis">
+    <line x1="40" x2="960" y1="88" y2="88" stroke="var(--line-strong)" stroke-width="1"/>
+    <line x1="500" x2="500" y1="82" y2="94" stroke="var(--line-strong)" stroke-width="1"/>
+    ${ticks}${cands}</svg>`;
 }
-
-let history = [];
-async function send() {
-  const t = $('#msg').value.trim(); if(!t) return;
-  $('#msg').value='';
-  const log=$('#chatlog');
-  const u=document.createElement('div'); u.className='msg user'; u.textContent=t; log.appendChild(u);
-  const wait=document.createElement('div'); wait.className='msg bot spin'; wait.textContent='thinking…';
-  log.appendChild(wait); log.scrollTop=log.scrollHeight;
+async function plotAxis(a) {
+  const pos = split($('#pos').value), neg = split($('#neg').value);
+  if (!pos.length) return notice('Name at least one phrase for the positive pole.');
+  const btn = $('#plot'); btn.disabled = true; btn.textContent = 'Plotting…';
+  const label = (pos[0] || 'axis').split(' ')[0].toLowerCase();
   try {
-    const d = await api('/api/accounts/'+sel.id+'/chat', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify({message:t, history})});
-    wait.className='msg bot'; wait.textContent=d.reply;   // textContent = no XSS from model output
-    history.push({role:'user',content:t},{role:'assistant',content:d.reply});
-  } catch(e){ wait.className='msg bot'; wait.textContent='⚠ '+e.message; }
-  log.scrollTop=log.scrollHeight;
+    const res = await post('/api/accounts/' + a.id + '/axis', {label, positive: pos, negative: neg});
+    const left = neg.length ? neg[0] : 'opposite', right = pos[0];
+    const top = res.shelf.slice(0, 5), bottom = res.shelf.slice(-5).reverse();
+    const ctop = res.candidates.slice(0, 3), cbottom = res.candidates.slice(-3).reverse();
+    $('#axisOut').innerHTML = `
+      <div class="poles-label"><span>← ${esc(left)}</span><span>${esc(right)} →</span></div>
+      ${spectrum(res)}
+      <div class="legend"><span class="l-loved"><i></i>rated 4 to 5</span><span class="l-liked"><i></i>rated 3 or unrated</span><span class="l-tol"><i></i>rated 1 to 2</span><span class="l-cand"><i></i>candidate</span></div>
+      <p class="agreement">${esc(res.rating_agreement.reading)}</p>
+      <div class="ends">
+        <div><ol>${bottom.map(b => `<li>${nameSpan(b)}</li>`).join('')}</ol>
+          ${cbottom.length ? `<p class="sub">candidates this way</p><ol>${cbottom.map(b => `<li class="cand">${nameSpan(b)}</li>`).join('')}</ol>` : ''}</div>
+        <div class="right"><ol>${top.map(b => `<li>${nameSpan(b)}</li>`).join('')}</ol>
+          ${ctop.length ? `<p class="sub">candidates this way</p><ol>${ctop.map(b => `<li class="cand">${nameSpan(b)}</li>`).join('')}</ol>` : ''}</div>
+      </div>`;
+  } catch (e) { $('#axisOut').innerHTML = `<div class="notice error">${esc(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = 'Plot';
 }
 
-$('#add').onclick = async () => {
-  const url=$('#url').value.trim(); if(!url) return;
-  try { const a = await api('/api/accounts', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({url_or_id:url, label:$('#label').value.trim()})});
-    $('#url').value=''; $('#label').value=''; await loadAccts();
-    select(accts.find(x=>x.id===a.id));
-  } catch(e){ alert(e.message); }
+// ---------- analysis, chat, add ----------
+function notice(text) {
+  const n = document.createElement('div'); n.className = 'notice error'; n.textContent = text;
+  $('#main').prepend(n); setTimeout(() => n.remove(), 6000);
+}
+async function runAnalyze(a) {
+  $('#main').innerHTML = `<div class="empty"><div><p class="eyebrow">${esc(a.label)}</p>
+    <h1>Reading the <em>shelf</em>.</h1><p class="hint" style="margin:0 auto">Fetching the feed, embedding every book, matching the corpus, scoring neighbours. About a minute.</p></div></div>`;
+  try { await post('/api/accounts/' + a.id + '/analyze', {}); await select(a); }
+  catch (e) {
+    $('#main').innerHTML = `<div class="empty"><div><p class="eyebrow">${esc(a.label)}</p><h1>Could not read this shelf.</h1>
+      <div class="notice error" style="text-align:left">${esc(e.message)}</div><button class="primary" id="run">Try again</button></div></div>`;
+    $('#run').onclick = () => runAnalyze(a);
+  }
+}
+async function send() {
+  const t = $('#msg').value.trim(); if (!t) return;
+  $('#msg').value = '';
+  const log = $('#log');
+  const u = document.createElement('div'); u.className = 'msg user'; u.textContent = t; log.appendChild(u);
+  const w = document.createElement('div'); w.className = 'msg bot wait'; w.textContent = 'reading the shelf…'; log.appendChild(w);
+  log.scrollTop = log.scrollHeight;
+  try {
+    const d = await post('/api/accounts/' + sel.id + '/chat', {message: t, history});
+    w.className = 'msg bot'; w.textContent = d.reply;          // textContent: model output never becomes HTML
+    history.push({role: 'user', content: t}, {role: 'assistant', content: d.reply});
+  } catch (e) { w.className = 'msg bot'; w.textContent = 'The agent could not answer: ' + e.message; }
+  log.scrollTop = log.scrollHeight;
+}
+$('#cancelAdd').onclick = () => $('#addDialog').close();
+$('#addForm').onsubmit = async e => {
+  e.preventDefault();
+  const url = $('#url').value.trim(); if (!url) return;
+  const btn = $('#confirmAdd'); btn.disabled = true;
+  try {
+    const a = await post('/api/accounts', {url_or_id: url, label: $('#label').value.trim()});
+    $('#url').value = ''; $('#label').value = ''; $('#addDialog').close();
+    await loadReaders(); select(readers.find(x => x.id === a.id));
+  } catch (err) { notice(err.message); }
+  btn.disabled = false;
 };
-loadAccts();
+loadReaders().then(() => { if (!sel) renderEmpty(null); });
 </script>
 </body>
 </html>

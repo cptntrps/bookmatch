@@ -6,7 +6,7 @@ import pathlib
 import pytest
 from bookmatch.corpus import Corpus
 
-FIX = pathlib.Path(__file__).parent / "gui_books.json"
+FIX = pathlib.Path(__file__).parent / "reader_c_books.json"
 _corpus = Corpus()
 
 

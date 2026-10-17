@@ -1,8 +1,8 @@
 """Chat agent gate (card #103).
 
 - build_profile structure: unit, synthetic embeddings, no services.
-- project_axis tool: needs Ollama; must surface French authors on the reader_a shelf.
-- gateway chat: needs the gateway key; must return grounded, non-empty text.
+- project_axis tool: needs embeddings; ranks shelf AND candidates, reports agreement.
+- chat: needs a chat key; must return grounded, non-empty text.
 """
 import json
 import os
@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from bookmatch import analyze, embed
+from bookmatch import agent as agent_mod
 from bookmatch.agent import BookAgent
 
 FIX = pathlib.Path(__file__).parent / "reader_a_books.json"
@@ -31,25 +32,25 @@ def test_build_profile_structure():
     assert p["loves_more_than_world"][0]["title"] == "A"
 
 
-def _ollama_up():
-    try:
-        import httpx
-        httpx.get(f"{embed.OLLAMA_URL}/api/tags", timeout=3).raise_for_status()
-        return True
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable")
+@pytest.mark.skipif(not embed.available(), reason="embedding endpoint not reachable")
 def test_project_axis_tool_wrapper():
     # Axis *quality* (surfacing French authors) is gated in test_more_french at the
     # right depth; here we prove the tool wrapper returns a well-formed, real ranking.
     books = json.load(open(FIX))
     E = embed.embed_books(books)
-    agent = BookAgent(books, E, profile={}, recs=[], label="Reader A")
+    recs = [{"title": "Madame Bovary", "author": "Gustave Flaubert"},
+            {"title": "The Grapes of Wrath", "author": "John Steinbeck"},
+            {"title": "Swann's Way", "author": "Marcel Proust"}]
+    agent = BookAgent(books, E, profile={}, recs=recs, label="Reader A")
     out = agent.project_axis(["French literature", "a novel set in France"],
-                             ["American literature"], top=12)
+                             ["American literature"], top=12, label="french")
     assert len(out["positive_pole"]) == 12 and len(out["negative_pole"]) == 12
+    # candidates are ranked in the shelf's frame: the French novels lead, Steinbeck trails
+    assert out["candidates_toward_positive"][-1].startswith("The Grapes of Wrath")
+    assert out["candidates_toward_negative"][0].startswith("The Grapes of Wrath")
+    # agreement is measured over the 309-book shelf, with a quotable reading
+    agr = out["rating_agreement"]
+    assert agr["n_rated"] > 100 and "french" in agr["reading"]
     # the two poles are genuinely opposite ends — no overlap
     assert not (set(out["positive_pole"]) & set(out["negative_pole"]))
     # and it is really axis-ordered: the French pole differs from a neutral 'summer' pole
@@ -57,8 +58,13 @@ def test_project_axis_tool_wrapper():
     assert out["positive_pole"] != other["positive_pole"]
 
 
-@pytest.mark.skipif(not (_ollama_up() and os.environ.get("BOOKMATCH_GATEWAY_KEY")),
-                    reason="gateway key / Ollama not available")
+# Opt-in only: an explicit bookmatch chat key, never an incidental OPENAI_API_KEY in the
+# environment, so a test run cannot spend money on a key it was not given.
+_EXPLICIT_KEY = os.environ.get("BOOKMATCH_CHAT_KEY") or os.environ.get("BOOKMATCH_GATEWAY_KEY")
+
+
+@pytest.mark.skipif(not (_EXPLICIT_KEY and embed.available()),
+                    reason="no explicit BOOKMATCH_CHAT_KEY / embedding endpoint not available")
 def test_chat_returns_grounded_text():
     books = json.load(open(FIX))
     E = embed.embed_books(books)

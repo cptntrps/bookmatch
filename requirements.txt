@@ -4,6 +4,4 @@ httpx==0.27.*
 numpy==2.*
 scipy==1.14.*
 psycopg[binary]==3.2.*
-openai==1.*
-# Private immutable client from the standard platform checkout; pip verifies the SHA-256.
-livingos-client @ file://${HOME}/src/products/livingos-api/clients/wheels/livingos_client-0.1.0-py3-none-any.whl#sha256=eda4842c5f3e84d36a26bcab3f73b5263e282c9998bebd21fc243a3ba73043ca
+openai>=1.40,<3

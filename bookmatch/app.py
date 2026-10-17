@@ -1,7 +1,7 @@
 """Book Match FastAPI app — add a Goodreads account, analyze, chat.
 
 Loads the UCSD corpus once at startup (lifespan) and holds it for the process.
-Every heavy dependency (Ollama, gateway, Postgres, corpus) is aurora-local.
+Embeddings, chat model and Postgres are configured by environment; defaults are local.
 """
 from __future__ import annotations
 import os
@@ -56,6 +56,12 @@ class ChatIn(BaseModel):
 class VetoIn(BaseModel):
     title: str
     author: str = ""
+
+
+class AxisIn(BaseModel):
+    label: str = "axis"
+    positive: list[str]
+    negative: list[str] = []
 
 
 def _drop_vetoed(recs: list[dict], vetoed: set[str]) -> list[dict]:
@@ -163,6 +169,26 @@ def unveto_book(account_id: int, body: VetoIn):
             raise HTTPException(404, "unknown account")
         storage.remove_veto(conn, account_id, body.title, body.author)
     return {"ok": True}
+
+
+@app.post("/api/accounts/{account_id}/axis")
+def axis(account_id: int, body: AxisIn):
+    """Project the shelf and the current candidates along a named concept axis.
+    The same routine the chat agent's tool uses; the UI draws the result."""
+    if not [p for p in body.positive if p.strip()]:
+        raise HTTPException(400, "give at least one phrase for the positive pole")
+    with storage.connect() as conn:
+        shelf = storage.load_shelf(conn, account_id)
+        analysis = storage.get_analysis(conn, account_id)
+        vetoed = storage.vetoed_keys(conn, account_id) if analysis else set()
+    if shelf is None or not shelf.embeddings.size:
+        raise HTTPException(409, "analyze this account before projecting an axis")
+    recs = _drop_vetoed(analysis["recs"], vetoed) if analysis and analysis.get("recs") else []
+    pos = embed.embed_terms([p for p in body.positive if p.strip()])
+    negs = [n for n in body.negative if n.strip()]
+    neg = embed.embed_terms(negs) if negs else None
+    C = embed.embed_books(recs) if recs else None
+    return analyze.axis_positions(shelf.books, shelf.embeddings, pos, neg, body.label, recs, C)
 
 
 @app.post("/api/accounts/{account_id}/chat")

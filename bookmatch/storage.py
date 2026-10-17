@@ -1,6 +1,6 @@
-"""Postgres persistence for Book Match — schema `books.*` on the aurora DB.
+"""Postgres persistence for Book Match: schema `books.*`.
 
-Additive to the shared livingos database: schema + tables are created with
+Additive to whatever database it is pointed at: schema + tables are created with
 IF NOT EXISTS. Embeddings are stored as raw float32 bytes (numpy) rather than
 pgvector — all geometry runs in numpy, so we only need durable blobs, not
 in-DB vector search.
@@ -14,7 +14,7 @@ import numpy as np
 import psycopg
 
 DSN = os.environ.get("BOOKMATCH_PG_DSN") or os.environ.get("PG_DSN") \
-    or "postgresql://livingos@localhost:5435/livingos"
+    or "postgresql://localhost:5432/bookmatch"
 
 _SCHEMA = """
 CREATE SCHEMA IF NOT EXISTS books;

@@ -5,7 +5,7 @@ public profiles:
 
     https://www.goodreads.com/review/list_rss/{user_id}?shelf={shelf}&page={n}
 
-Ported from the June-2026 scratch fetchers (`reader_a_fetch.py` et al).
+Ported from the June-2026 scratch fetchers.
 """
 from __future__ import annotations
 import html

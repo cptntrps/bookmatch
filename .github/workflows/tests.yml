@@ -14,6 +14,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest pytest-asyncio
-      # Suite is hermetic where it must be: tests needing aurora-local services
-      # (Ollama embeddings, livingos-api gateway) self-skip; everything else must pass.
+      # Suite is hermetic where it must be: tests needing live services (an embedding
+      # endpoint, a chat key, Postgres) self-skip; everything else must pass.
       - run: python3 -m pytest -q

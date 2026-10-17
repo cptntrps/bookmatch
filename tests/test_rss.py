@@ -113,8 +113,8 @@ def test_parse_empty_rss():
 
 @pytest.mark.parametrize("inp,expected", [
     ("12345678", "12345678"),
-    ("https://www.goodreads.com/user/show/12345678-reader_a", "12345678"),
-    ("https://www.goodreads.com/review/list/23456789-reader_b", "23456789"),
+    ("https://www.goodreads.com/user/show/12345678-some-reader", "12345678"),
+    ("https://www.goodreads.com/review/list/23456789-another", "23456789"),
     ("https://www.goodreads.com/review/list_rss/34567890?shelf=read", "34567890"),
     ("https://www.goodreads.com/review/list/45678901?ref=nav_mybooks", "45678901"),
 ])

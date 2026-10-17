@@ -1,7 +1,6 @@
 """Taste analysis over an embedded shelf — pure geometry, no inference.
 
-The math is a direct port of the June-2026 scratch toolkit
-(`reader_a_analysis.py`, `reader_a_french.py`). Every function here takes a
+The math is a direct port of the June-2026 scratch toolkit. Every function here takes a
 pre-computed embedding matrix so it is fast and unit-testable without Ollama;
 `embed.py` owns the actual embedding calls.
 
@@ -61,13 +60,79 @@ def axis_from_vectors(pos: np.ndarray, neg: np.ndarray | None = None) -> np.ndar
     return _unit(axis)
 
 
-def project_axis(E: np.ndarray, axis: np.ndarray) -> np.ndarray:
+def project_axis(E: np.ndarray, axis: np.ndarray,
+                 center: np.ndarray | None = None) -> np.ndarray:
     """Project every book onto a semantic axis in mean-centered space.
 
     This is the "make my shelf more french" operation: one dot product per book,
     unsupervised — nobody labels which books are french. Returns the projection
-    (higher = more toward the positive pole of the axis)."""
-    return (E - E.mean(0)) @ axis
+    (higher = more toward the positive pole of the axis).
+
+    `center` lets a second set of books (candidate recommendations) be projected
+    in the same frame as the shelf: pass the shelf mean. Without it the set is
+    centered on itself."""
+    c = E.mean(0) if center is None else center
+    return (E - c) @ axis
+
+
+def axis_rating_agreement(proj: np.ndarray, my: np.ndarray, min_rated: int = 5) -> dict:
+    """How much the reader's own ratings follow an axis.
+
+    Spearman rank correlation between the axis projection and the reader's rating,
+    over rated books only. Positive: they rate books nearer the positive pole
+    higher. Returns {"spearman": float | None, "n_rated": int}. `None` means
+    "cannot tell" (too few rated books, or no variance), never a fake zero."""
+    rated = my > 0
+    n = int(rated.sum())
+    if n < min_rated:
+        return {"spearman": None, "n_rated": n}
+    x, y = proj[rated], my[rated]
+    if np.ptp(x) < _EPS or np.ptp(y) < _EPS:
+        return {"spearman": None, "n_rated": n}
+    from scipy.stats import spearmanr
+    res = spearmanr(x, y)
+    rho = float(getattr(res, "statistic", res[0]))
+    return {"spearman": round(rho, 3), "n_rated": n}
+
+
+def describe_agreement(agreement: dict, label: str) -> str:
+    """One plain sentence a chat model can quote about an axis-rating agreement."""
+    rho, n = agreement.get("spearman"), agreement.get("n_rated", 0)
+    if rho is None:
+        return f"Too few rated books ({n}) to tell whether ratings follow the '{label}' axis."
+    strength = "no" if abs(rho) < 0.1 else "a weak" if abs(rho) < 0.3 else "a clear"
+    if strength == "no":
+        return f"Ratings show no relation to the '{label}' axis (Spearman {rho:+.2f}, n={n})."
+    side = "toward" if rho > 0 else "away from"
+    return (f"The reader rates books {side} the '{label}' pole higher: "
+            f"{strength} relation (Spearman {rho:+.2f}, n={n}).")
+
+
+def axis_positions(books: list[dict], E: np.ndarray, pos: np.ndarray,
+                   neg: np.ndarray | None, label: str,
+                   candidates: list[dict] | None = None,
+                   C: np.ndarray | None = None) -> dict:
+    """The one projection routine behind the chat tool, the CLI and the UI.
+
+    Builds the axis from the pole embeddings, projects the shelf and (optionally)
+    the candidates in the shelf's frame, scales positions to [-1, 1] by the largest
+    absolute projection across both sets, and attaches the rating agreement.
+    Lists come sorted from the positive pole down."""
+    axis = axis_from_vectors(pos, neg)
+    center = E.mean(0)
+    proj = project_axis(E, axis, center)
+    cproj = (project_axis(C, axis, center)
+             if candidates and C is not None and len(C) else np.zeros(0))
+    scale = max(float(np.abs(proj).max()) if len(proj) else 0.0,
+                float(np.abs(cproj).max()) if len(cproj) else 0.0, _EPS)
+    agreement = axis_rating_agreement(proj, ratings(books))
+    shelf = [{"title": books[i]["title"], "author": books[i].get("author", ""),
+              "myrating": float(books[i].get("myrating") or 0),
+              "x": round(float(proj[i] / scale), 4)} for i in np.argsort(-proj)]
+    cands = [{"title": candidates[i]["title"], "author": candidates[i].get("author", ""),
+              "x": round(float(cproj[i] / scale), 4)} for i in np.argsort(-cproj)]
+    return {"label": label, "shelf": shelf, "candidates": cands,
+            "rating_agreement": {**agreement, "reading": describe_agreement(agreement, label)}}
 
 
 def content_axes(E: np.ndarray, k: int = 3) -> np.ndarray:

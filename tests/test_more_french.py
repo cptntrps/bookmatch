@@ -1,9 +1,9 @@
 """Integration gate for card #101: reproduce the June 'make it more french'
-result on the real reader_a fixture. Requires Ollama (nomic-embed-text) running.
+result on the real reader_a fixture. Requires an embedding endpoint (default: Ollama, nomic-embed-text).
 
 The claim being defended: an unsupervised semantic axis (French - American,
 built from a handful of concept phrases) ranks the French-language authors on
-Reader A's 309-book shelf near the top — nobody labelled which books are French.
+reader A's 309-book shelf near the top — nobody labelled which books are French.
 """
 import json
 import os
@@ -21,22 +21,13 @@ AMERICAN_TERMS = ["American literature", "a novel set in small-town America",
                   "American author", "the United States", "contemporary American fiction"]
 
 # Ground truth = the exact continental-European literary authors the June session
-# itself validated the axis against (reader_a_french.py). The axis is really
+# itself validated the axis against. The axis is really
 # "European translated literary fiction vs American"; these are the recognizably
-# European names on Reader A's 309-book shelf.
+# European names on reader A's 309-book shelf.
 FRENCH_AUTHORS = ["duras", "süskind", "suskind", "calvino", "ventura", "harwicz"]
 
 
-def _ollama_up() -> bool:
-    try:
-        import httpx
-        httpx.get(f"{embed.OLLAMA_URL}/api/tags", timeout=3).raise_for_status()
-        return True
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable")
+@pytest.mark.skipif(not embed.available(), reason="embedding endpoint not reachable")
 def test_more_french_surfaces_french_authors():
     books = json.load(open(FIX))
     E = embed.embed_books(books)

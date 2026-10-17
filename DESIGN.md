@@ -10,11 +10,10 @@ tags: [goodreads, recommender, hyperbolic, myapps]
 
 # Book Match — design
 
-A MyApps app: add a Goodreads account, run analysis, get a taste profile plus
+A small web app: add a Goodreads account, run analysis, get a taste profile plus
 grounded book recommendations, and chat with an embedded agent about which books
 that person would like. Recreates the June-2026 "impossible insights" Goodreads
-rec-engine (see session `7d1f695b`, scratch toolkit in
-`~/livingos/data/scratch/{reader_a,reader_b,gui}_*`) as a durable product.
+rec-engine (a scratch toolkit over three readers' shelves) as a durable product.
 
 ## Why it works (the seam that makes this cheap)
 
@@ -68,15 +67,14 @@ content axes, the **antipode** of what she loves, and **arbitrary named-axis
 projection** — the "make it more french" trick: build an axis from a handful of
 concept embeddings, project every book with one dot product, unsupervised.
 
-### 4. Chat agent — `bookmatch/agent.py` (via livingos-api gateway)
-`bare-opus`, `generic` scope, OpenAI schema at `http://127.0.0.1:8510/v1`
-(mint a key: `python3 -m app.cli.keys mint --name=bookmatch --schemas=openai --scopes=generic`).
+### 4. Chat agent — `bookmatch/agent.py` (any OpenAI-compatible chat endpoint)
 System prompt = the taste fingerprint + top neighbor-gap candidates. One live tool,
-`project_axis(name)`, runs the dot-product projection over the shelf on demand, so
+`project_axis(name)`, runs the dot-product projection over the shelf and the candidates
+on demand and reports whether the reader's ratings follow the axis (v0.5.0), so
 "show me her most melancholic books" / "what would she like for summer" work
 interactively.
 
-### 5. Storage — Postgres `books.*` (aurora :5435)
+### 5. Storage — Postgres `books.*`
 - `books.accounts` — goodreads user id/url, label, added_at.
 - `books.shelf_books` — per account: title, author, myrating, avg, shelves, desc,
   embedding (`vector(768)`), matched book_id, plus the feed metadata: read_at,
@@ -87,32 +85,30 @@ Re-open is instant; multiple accounts persist.
 ### 6. Web app — `bookmatch/app.py` (FastAPI) + `static/` SPA
 Endpoints: `POST /api/accounts` (add), `POST /api/accounts/{id}/analyze`,
 `GET /api/accounts/{id}` (profile + recs), `POST /api/accounts/{id}/chat`.
-Single dark-theme page matching MyApps style: add-account form, analysis dashboard
-(taste axes, contrarian picks, neighbor-gap recs), chat panel with an axis-request
-box. Served on aurora, port `8092` (verify free at deploy).
+Single dark-theme page: add-account form, analysis dashboard (taste axes, contrarian
+picks, neighbor-gap recs), chat panel with an axis-request box. Served on port `8092`.
 
-### 7. Deploy — `bookmatch.service` (systemd, aurora) + one MyApps tile
-Tile added to the "Apps" group in `~/platform/services/myapps/index.html`.
+### 7. Deploy — `bookmatch.service` (systemd) behind the home dashboard
 
 ## Data flow
 add account → store → analyze (RSS → embed → match → neighbor-gap → cache) → UI
-renders profile + recs → chat (gateway + `project_axis` tool).
+renders profile + recs → chat (chat model + `project_axis` tool).
 
 ## Error handling (loud — no silent fallback)
 - Private/invalid profile or empty `read` shelf → explicit 4xx with a clear message.
 - **Low match rate** (few shelf books found in corpus) → visible warning banner
   ("18/50 matched; recs are weak"), never silently proceed as if fine.
-- Ollama / gateway / Postgres down → surfaced error, never empty recs.
+- Embeddings / chat model / Postgres down → surfaced error, never empty recs.
 
 ## Testing
-Fixtures already on disk from the June session: `reader_a_books.json`,
-`reader_b_books.json`, `gui_books.json`.
+Fixtures from the June session: `reader_a_books.json`, `reader_b_books.json`,
+`reader_c_books.json` (anonymized public shelves).
 - Unit: RSS parse (fixture), match normalizer, neighbor-gap on a synthetic matrix,
   arbitrary-axis projection reproduces the "more french" ranking on the reader_a fixture.
 - Integration: analyze path writes to and reloads from `books.*`.
-- Smoke: end-to-end on Gui's own account through the browser.
+- Smoke: end-to-end on the author's own account through the browser.
 
 ## Decisions (approved 2026-07-05)
 Full UCSD neighbor-gap (not LLM-only recs); all-at-once, dataset-first; live
-`project_axis` tool in chat; `books.*` Postgres storage; `bare-opus` for chat;
-aurora-hosted at `platform/services/bookmatch`; app name "Book Match".
+`project_axis` tool in chat; `books.*` Postgres storage; a hosted chat model;
+self-hosted as a systemd service; app name "Book Match".

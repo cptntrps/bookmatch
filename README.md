@@ -1,70 +1,198 @@
 # Book Match
 
-> **Documentation:** `docs/` carries the generated six-doc set (scope, architecture, workflows, data, quality, internals) — read it before reading code. Do not edit; it regenerates nightly.
+[![tests](https://github.com/cptntrps/bookmatch/actions/workflows/tests.yml/badge.svg)](https://github.com/cptntrps/bookmatch/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+A taste engine for one person's library. Point it at a Goodreads shelf and it builds
+a taste profile from embeddings, finds the books that readers nearest to this person
+love and they do not own yet (user-based collaborative filtering over 876k public
+readers), and hands both to a chat agent that can rank the shelf and the candidates
+along any concept you name in conversation: "more French", "less violent",
+"something for summer". No labels, no training, one dot product per book.
 
-Add a Goodreads account → run analysis → get a taste profile + grounded book
-recommendations → veto the ones you do not want → chat with an agent about what
-that person would like.
+The conversational concept-axis method is written up in [METHOD.md](METHOD.md).
+The design record is [DESIGN.md](DESIGN.md).
 
-Recreates the June-2026 Goodreads "impossible insights" rec-engine as a MyApps app.
-Full design: [DESIGN.md](DESIGN.md).
+## The demo
 
-## Layout
-- `bookmatch/` — app package (analyze, neighbors, agent, app, storage).
-- `scripts/build_index.py` — one-time UCSD Goodreads dataset download + index build.
-- `sql/v_bookmatch_correctness.sql` — `books.v_bookmatch_correctness`, the ADR-0071
-  correctness surface: per account, asserts the pipeline produced a *grounded* result
-  (shelf ingested, taste axes complete, UCSD corpus matched, non-empty recs + profile).
-  Health is not modelled there — that stays the live systemd + `/api/health` probe.
-- `capability.yaml` — capability manifest (`cap.bookmatch-recommend`, ADR-0095),
-  crawled into `registry.capabilities`.
-- `static/` — dark-theme SPA.
-- `tests/` — unit + integration (fixtures from `~/livingos/data/scratch/`).
-- `deploy.sh` — in-place deploy: restart `bookmatch.service`, prove health, roll back
-  to last-good on failure.
-- `bookmatch.service.template` — systemd unit (aurora `:8092`, secrets via sops drop-in).
-- `.githooks/` + `scripts/install_hooks.sh` — pre-push test gate (ADR-0020); run
-  `scripts/install_hooks.sh` once per fresh clone.
+An axis built only from the phrases "French literature" vs "American literature",
+applied to a real 309-book shelf (`tests/reader_a_books.json`, an anonymized public
+Goodreads shelf). Nobody labelled which books are French.
 
-## Run (dev)
-Keep the platform `livingos-api` checkout at `$HOME/src/products/livingos-api`.
-The requirements install includes its pinned private client wheel automatically.
+```
+python -m bookmatch.cli tests/reader_a_books.json \
+    --positive "French literature" "a novel set in France" "French author" \
+    --negative "American literature" "a novel set in small-town America" "American author" \
+    --label french --candidates candidates.json --top 8
+```
+
+```
+axis 'french'
+
+toward the positive pole:
+  The Margot Affair — Sanaë Lemoine
+  The Lover — Marguerite Duras
+  Perfume: The Story of a Murderer — Patrick Süskind
+  Hiroshima mon amour — Marguerite Duras
+  Rouge — Mona Awad
+  My Husband — Maud Ventura
+  Bluebeard's Castle — Anna Biller
+  Die, My Love — Ariana Harwicz
+
+toward the negative pole:
+  Certain American States: Stories — Catherine Lacey
+  Deliver Me from Nowhere: The Making of Bruce Springsteen's Nebraska — Warren Zanes
+  The New Jim Crow: Mass Incarceration in the Age of Colorblindness — Michelle Alexander
+  Even Cowgirls Get the Blues — Tom Robbins
+  The Wolf Wants In — Laura McHugh
+  Vice: Dick Cheney and the Hijacking of the American Presidency — Lou Dubose
+  The Lion and the Rose — May Sarton
+  Swallowtail (Button Poetry) — Brenna Twohy
+
+Ratings show no relation to the 'french' axis (Spearman +0.02, n=305).
+
+candidates toward the positive pole:
+  Madame Bovary — Gustave Flaubert
+  Swann's Way — Marcel Proust
+  My Brilliant Friend — Elena Ferrante
+  The Stranger — Albert Camus
+  The Elegance of the Hedgehog — Muriel Barbery
+  Blood Meridian — Cormac McCarthy
+  The Grapes of Wrath — John Steinbeck
+  Beloved — Toni Morrison
+```
+
+Three things to notice. The axis sorted the shelf by nationality with no labels and
+no training. The eight candidates, which the shelf has never seen, were ranked in the
+same frame and came out French-to-American. And the agreement line says this reader
+does not rate French books any higher: the axis describes the shelf, it does not
+predict this person's ratings, and the agent is told so before it recommends.
+
+The same operation is the chat agent's one tool. The agent chooses the phrases from
+the conversation, gets back both poles of the shelf, the candidates ranked in the
+same frame, and whether the reader's own ratings follow that axis, then grounds its
+answer in that.
+
+In the web app the axis is the first thing on the page: type two poles, or pick a
+preset, and every book on the shelf is drawn as a tick along the line (red for the
+reader's 4- and 5-star books), with the candidates as hollow markers below it.
+
+![The axis panel: a shelf plotted between American and French literature](assets/axis.jpeg)
+
+## How it works
+
+1. **Embed the shelf.** Each book (`title by author. description`) becomes a 768-d
+   vector from a pretrained text-embedding model (`nomic-embed-text` on a local
+   Ollama by default; any OpenAI-schema `/v1/embeddings` endpoint works).
+2. **Taste fingerprint** (`bookmatch/analyze.py`, pure numpy):
+   the rating-weighted *taste axis* (loved vs merely tolerated), *contrarian* picks
+   (own rating minus community average, both ways), the shelf's principal *content
+   axes* (SVD), and the *antipode*: the region least like what this reader loves.
+3. **Neighbor gap** (`bookmatch/neighbors.py`): the shelf is matched into the UCSD
+   Goodreads corpus (876k users, 2.3M books). Only users who share books with the
+   reader are scored, by cosine over shared ratings; the top neighbours' favourites
+   that the reader does not own are the candidates. Sibling editions are collapsed
+   so an owned book never resurfaces.
+4. **Conversational concept axes** (`bookmatch/agent.py`): the chat model calls
+   `project_axis(label, positive, negative)`. The axis is
+   `unit(mean(positive) - mean(negative))` in the same embedding space. Shelf and
+   candidates are projected in one frame (centered on the shelf mean). The result
+   carries the Spearman agreement between the axis and the reader's own ratings,
+   reported as unknown when there is too little to tell.
+
+```
+ Goodreads RSS ──▶ shelf ──▶ embeddings ──▶ taste fingerprint ─┐
+                     │                                          ├──▶ chat agent ◀──▶ project_axis
+                     └──▶ match into UCSD corpus ──▶ neighbour-gap candidates ─┘
+```
+
+## Quick start
+
+Requirements: Python 3.12, an embedding endpoint (default: [Ollama](https://ollama.com)
+with `ollama pull nomic-embed-text`).
 
 ```
 pip install -r requirements.txt
-python3 -m bookmatch.storage            # one-time, bootstrap/upgrade the books.* schema
-python3 scripts/build_index.py          # one-time, multi-GB, → ~/data/goodreads-ucsd
-uvicorn bookmatch.app:app --port 8092
+python -m bookmatch.cli tests/reader_a_books.json            # taste profile only
+python -m bookmatch.cli tests/reader_a_books.json --positive "melancholy" --label mood
 ```
 
-The schema is never created as a side effect of app start or a test run: both call
-`storage.ensure_schema_ready()`, which verifies only and raises if `books.*` is missing.
-Run `python3 -m bookmatch.storage` explicitly, as a role that holds CREATE on the
-database (`livingos`) — the app and test job roles do not hold it.
+The full app adds collaborative filtering, persistence and chat:
 
-Depends on aurora-local services: Ollama (`nomic-embed-text`), livingos-api gateway
-(`:8510`), Postgres (`:5435`).
+```
+scripts/download_dataset.sh && python scripts/build_index.py   # one-time, ~6.5 GB raw
+python -m bookmatch.storage                                      # bootstrap books.* in Postgres
+uvicorn bookmatch.app:app --port 8092                            # http://localhost:8092
+```
 
-## Deploy (aurora)
-Runs live as `bookmatch.service` on aurora `:8092` — the unit executes this checkout
-in place. `./deploy.sh` refuses anything but a clean `main` at `origin/main`, restarts
-the unit (needs a sudo ticket: `sudo -v`), and requires `/api/health` to report
-`ok` + `corpus_ready`; a failed health check rolls back to the last known-good
-revision and still exits non-zero. Secrets come from the sops drop-in
-(`bookmatch.service.d/sops.conf` → `/run/bookmatch/secrets.env`, ADR-0021); there is
-no plaintext `.env`. CI (`.github/workflows/tests.yml`) runs the pytest suite on
-push/PR; the pre-push hook runs the same suite locally. That hook re-execs itself once
-under `gate_capture.sh`, so a local red — which aborts the push before the bare remote
-sees the ref — still records its verdict in `ops.gate_run`. The wrapper returns the
-wrapped exit code unchanged, and degrades to an unwrapped run if the recorder is absent.
+Add a Goodreads profile URL or user id in the page, run the analysis, veto what you
+do not want, chat. Shelves are read from Goodreads' public per-shelf RSS feeds; a
+private profile is reported as an error, never as an empty result.
 
-## Shared capability dependency
+## Configuration
 
-With the platform checkout at `$HOME/src/products/livingos-api`, the normal
-`python -m pip install -r requirements.txt` installs `livingos-client` 0.1.0
-from its bundled wheel and verifies its SHA-256. Run pip with the interpreter
-that runs this consumer. No separate wheel
-copy, cache setup or client-install command is needed. A fresh machine or CI
-job checks out the private owning repository at that standard path first; the
-client is not fetched from public PyPI. The wheel has no third-party dependencies.
+| Variable | Default | Purpose |
+|---|---|---|
+| `BOOKMATCH_EMBED_URL` | `http://127.0.0.1:11434/v1` | OpenAI-schema embeddings endpoint |
+| `BOOKMATCH_EMBED_MODEL` | `nomic-embed-text` | embedding model |
+| `BOOKMATCH_EMBED_KEY` | `ollama` | bearer key for the embeddings endpoint |
+| `BOOKMATCH_CHAT_URL` | OpenAI | OpenAI-schema chat endpoint with tool calling |
+| `BOOKMATCH_CHAT_MODEL` | `gpt-4o-mini` | chat model |
+| `BOOKMATCH_CHAT_KEY` | `$OPENAI_API_KEY` | bearer key for chat |
+| `BOOKMATCH_PG_DSN` | `postgresql://localhost:5432/bookmatch` | Postgres for `books.*` |
+| `BOOKMATCH_INDEX` | `~/data/goodreads-ucsd/index` | built corpus index |
+
+## API
+
+| Method | Path | Does |
+|---|---|---|
+| `POST` | `/api/accounts` | add a Goodreads profile (`url_or_id`, `label`) |
+| `POST` | `/api/accounts/{id}/analyze` | fetch shelf, embed, match, recommend, store |
+| `GET` | `/api/accounts/{id}` | cached profile and recommendations |
+| `POST` | `/api/accounts/{id}/axis` | project shelf and candidates on an axis (`label`, `positive[]`, `negative[]`) |
+| `POST` / `DELETE` | `/api/accounts/{id}/veto` | hide / unhide a recommendation, persistently |
+| `POST` | `/api/accounts/{id}/chat` | talk to the agent (`message`, `history`) |
+| `GET` | `/api/health` | `ok` and whether the corpus index is loaded |
+
+## Tests
+
+```
+python -m pytest -q
+```
+
+The geometry, the RSS parser, the matcher, the neighbour-gap engine on a synthetic
+matrix, the embedding client (mocked) and the CLI report run offline. Tests that need
+a live embedding endpoint, a chat key or Postgres skip themselves, and say so.
+`tests/test_more_french.py` is the integration gate for the demo above: Duras must
+rank in the top 10% of the shelf on the French axis.
+
+## Layout
+
+```
+bookmatch/analyze.py    taste fingerprint, axes, projection, rating agreement (numpy only)
+bookmatch/neighbors.py  user-based CF over a sparse user x item matrix
+bookmatch/corpus.py     index loading, shelf matching, candidate mapping
+bookmatch/embed.py      OpenAI-schema embeddings client
+bookmatch/agent.py      chat agent with the live project_axis tool
+bookmatch/cli.py        offline demo
+bookmatch/app.py        FastAPI app; static/ is the single-page UI
+bookmatch/storage.py    Postgres persistence (books.*)
+scripts/                corpus download and index build
+tests/                  suite plus three anonymized shelf fixtures
+docs/                   generated reference documentation (do not edit by hand)
+```
+
+`deploy.sh`, `bookmatch.service.template` and `capability.yaml` are the reference
+deployment from the author's home server; they are not needed to run the project.
+
+## Provenance
+
+First built in July 2026 as a durable version of a June 2026 analysis session; the
+concept-axis tool, candidate ranking in the shelf's frame and the rating agreement
+were added for this public release (October 2026). Prior work and the exact method
+are in [METHOD.md](METHOD.md). The corpus is the UCSD Goodreads dataset
+(Wan and McAuley, 2018).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
