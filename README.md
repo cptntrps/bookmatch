@@ -73,11 +73,13 @@ the conversation, gets back both poles of the shelf, the candidates ranked in th
 same frame, and whether the reader's own ratings follow that axis, then grounds its
 answer in that.
 
-In the web app the axis is the first thing on the page: type two poles, or pick a
-preset, and every book on the shelf is drawn as a tick along the line (red for the
-reader's 4- and 5-star books), with the candidates as hollow markers below it.
+The web app is one screen, no page scroll at desktop: the deck on the left, where you
+decide on candidates with one tap or one key (W, R, D, N; Z to undo), and on the right
+the axis, the decided ledger and the shelf. The candidate you are deciding on is marked
+live on the spectrum among the books you have read, with a sentence saying where it
+sits and next to what.
 
-![The axis panel: a shelf plotted between American and French literature](assets/axis.jpeg)
+![One screen: the deck on the left, the axis with the current candidate marked, the ledger and the shelf on the right](assets/stage.jpeg)
 
 ## How it works
 
@@ -132,9 +134,9 @@ the candidates, chat.
 different to the model: *Want to read* keeps it on your list; *Read it* adds it to the
 shelf as a read book; *Didn't like it* adds it to the shelf with a low rating, a negative
 signal for the taste axis and the neighbour search; *Not interested* hides it. The last
-two kinds join the shelf at the next analysis. Every verdict is undoable from a toast and
-from the decided lists, and every change, undo included, is appended to
-`books.verdict_events`. The store deliberately has no snooze state: an undecided
+two kinds join the shelf at the next analysis. Every verdict is undoable from the persistent undo bar
+(an undo stack, Z or the button) and from the decided ledger, and every change, undo
+included, is appended to `books.verdict_events`. The store deliberately has no snooze state: an undecided
 candidate simply stays in the list. Shelves are read from Goodreads' public per-shelf RSS feeds; a
 private profile is reported as an error, never as an empty result.
 
