@@ -153,6 +153,32 @@ private profile is reported as an error, never as an empty result.
 | `BOOKMATCH_PG_DSN` | `postgresql://localhost:5432/bookmatch` | Postgres for `books.*` |
 | `BOOKMATCH_INDEX` | `~/data/goodreads-ucsd/index` | built corpus index |
 
+`BOOKMATCH_GATEWAY_URL` and `BOOKMATCH_GATEWAY_KEY` are accepted as fallbacks for the
+chat URL and for both bearer keys (`bookmatch/agent.py`, `bookmatch/embed.py`); the
+production secret file uses the gateway names.
+
+## Secrets handling
+
+- **Store.** One sops-encrypted file, `~/src/infrastructure-secrets/services/bookmatch.enc.env`
+  (ADR-0021, drained from a plaintext `.env` on 2026-07-11). Recipients are the operator
+  master key and the principal key `bookmatch`; the private age key is `~/.keys/bookmatch.age`,
+  backed up as the 1Password document "platform principal key - bookmatch". The file holds
+  `BOOKMATCH_GATEWAY_URL`, `BOOKMATCH_GATEWAY_KEY` (the livingos-api scoped key `bookmatch`),
+  `BOOKMATCH_CHAT_MODEL` and `PG_DSN`. No plaintext `.env` exists in the checkout.
+- **Delivery.** The systemd drop-in `/etc/systemd/system/bookmatch.service.d/sops.conf` runs
+  `sops -d` at `ExecStartPre` into `/run/bookmatch/secrets.env` (tmpfs, mode 0600) and loads it
+  with `EnvironmentFile`. `bookmatch.service.template` asserts the drop-in exists, so a missing
+  drop-in refuses the start instead of running without credentials.
+- **Rotation.** No scheduled cadence. Rotate on an event: a suspected exposure, a gateway re-key
+  or a Postgres credential change. Procedure: obtain the new value from its issuer, edit the
+  file with `sops ~/src/infrastructure-secrets/services/bookmatch.enc.env`, commit and push the
+  secrets repo, restart the unit with `sudo systemctl restart bookmatch`, then verify
+  `/api/health` and one chat request.
+- **Who.** The steward (`bookmatch-po`) edits the file and restarts the unit. Issuing a new
+  scoped gateway key and replacing the age key (re-key recipients, `sops updatekeys`, update
+  the 1Password document) are owner-escalated operations; see
+  `~/src/agents/packages/bookmatch-po/runbooks/bookmatch.md`.
+
 ## API
 
 | Method | Path | Does |
