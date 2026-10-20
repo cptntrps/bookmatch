@@ -12,7 +12,8 @@ Outputs (~/data/goodreads-ucsd/index):
   book_lookup.sqlite  books(book_id, title, author) + lookup(normkey -> book_id), indexed
   meta.json         {n_users, n_items, n_interactions, built_at}
 
-Only rated interactions (rating in 1..5) are kept — explicit taste is the CF signal.
+Only interactions with rating > 0 are kept — explicit taste is the CF signal.
+The Goodreads rating domain is 1..5; the filter itself enforces no upper bound.
 Idempotent: rewrites the index dir each run.
 """
 from __future__ import annotations
