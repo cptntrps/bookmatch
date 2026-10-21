@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
+# WORK-1029 canonical gate receipt envelope
+_gate_main() {
+#!/usr/bin/env bash
 # pre-push test gate (ADR-0020 adopted-standard, grocery pattern): the full suite
 # must be green before anything leaves this repo. Exit code is pytest's — honest
 # red-reject, no soft-fail path.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Gate-verdict recording (rows 71111 / 79696; recorder ops_236 / row 70512). Re-exec ONCE
-# under the recorder so this gate's verdicts land in ops.gate_run and aggregate in
-# ops.v_gate_friction. The bare-remote pre-receive is already wrapped, but a LOCAL red is
-# invisible there: pytest failing here aborts the push, so /home/gui/bookmatch.git never
-# sees the ref and never records the refusal. This is the only sensor for that class.
-# gate_capture returns the wrapped exit code UNCHANGED even when the recorder is broken
-# (ops tests/test_gate_capture.sh #3), so it cannot add a way for a push to be refused;
-# a missing recorder degrades to running unwrapped.
-if [ -z "${GATE_CAPTURE_ACTIVE:-}" ] && [ -x /home/gui/platform/services/ops/bin/gate_capture.sh ]; then
-  export GATE_CAPTURE_ACTIVE=1
-  exec /home/gui/platform/services/ops/bin/gate_capture.sh bookmatch pre-push "$0" "$@"
-fi
 echo "pre-push: running bookmatch test suite (python3 -m pytest -q)" >&2
 python3 -m pytest -q
+
+}
+if source /home/gui/src/infrastructure/bin/gate_capture.sh; then
+    gate_capture bookmatch pre-push _gate_main "$@"
+else
+    echo "gate_capture: recorder unavailable; verdict NOT recorded" >&2
+    ( _gate_main "$@" )
+fi
