@@ -156,6 +156,20 @@
   .examples { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .4rem; }
   .examples button { font-size: .78rem; padding: .2rem .5rem; color: var(--muted); }
 
+  /* how it works: same drawer, a reading column */
+  .how .body { flex: 1; overflow: auto; margin-top: .4rem; padding-right: .3rem; font-size: .9rem; }
+  .how h3 { font-size: .95rem; margin: 1.1rem 0 .35rem; letter-spacing: -.01em; }
+  .how p { margin: 0 0 .5rem; }
+  .how ul { margin: 0 0 .5rem; padding-left: 1.1rem; }
+  .how li { margin: .2rem 0; }
+  .how .flow { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin: .6rem 0 .2rem; font-size: .8rem; }
+  .how .flow span { background: var(--panel-2); border-radius: var(--r); padding: .2rem .5rem; }
+  .how .flow b { color: var(--accent); font-weight: 700; }
+  .how .vt { display: grid; grid-template-columns: 8.5rem 1fr; gap: .1rem .7rem; margin: .3rem 0 .5rem; }
+  .how .vt dt { font-weight: 700; }
+  .how .vt dd { margin: 0; color: var(--muted); }
+  .how .src { color: var(--faint); font-size: .78rem; margin-top: 1rem; }
+
   dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); border-radius: 12px; padding: 1.1rem 1.2rem; width: min(440px, 92vw); }
   dialog::backdrop { background: rgba(10,12,20,.55); }
   dialog label { display: block; font-size: .8rem; color: var(--muted); margin: .6rem 0 .2rem; }
@@ -189,6 +203,7 @@
   <nav class="tabs" aria-label="View">
     <button data-view="decide" aria-pressed="true">Decide</button><button data-view="axis">Axis</button><button data-view="ledger">Decided</button><button data-view="shelf">Shelf</button>
   </nav>
+  <button id="howBtn" class="ghost" aria-controls="how">How it works</button>
   <button id="askBtn" class="primary">Ask the shelf</button>
 </header>
 
@@ -207,6 +222,64 @@
   <div class="examples" id="examples"></div>
 </aside>
 
+<aside class="drawer how" id="how" aria-label="How it works">
+  <div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">How it works</h2><button class="ghost" id="closeHow">Close</button></div>
+  <div class="body">
+    <div class="flow" aria-label="The loop"><span>Your shelf</span><b>→</b><span>Similar readers</span><b>→</b><span>Candidates</span><b>→</b><span>Your verdicts</span><b>→</b><span>Re-analyze</span></div>
+
+    <h3>What it reads</h3>
+    <ul>
+      <li><b>Your shelf.</b> The books on your public Goodreads "read" shelf, with your star rating, the Goodreads average and the book's description. A private profile is an error, never an empty shelf.</li>
+      <li><b>The crowd.</b> The UCSD Goodreads dataset (Wan and McAuley, 2018): ratings from 876k public readers on 2.3M books.</li>
+      <li><b>Your verdicts.</b> What you tap on each candidate.</li>
+    </ul>
+
+    <h3>Where the candidates come from</h3>
+    <p>Each book on your shelf is matched by title and author into the crowd. A book you read but did not rate counts as 4 stars.</p>
+    <p>Only readers who share at least two books with you are compared. Their ratings on those books are compared with yours. The 100 most similar readers vote: each book they rated gets their rating, weighted by how similar they are to you.</p>
+    <p>Books you own, and other editions of them, are removed. The top 20 become the deck. The bar on a card shows how many of the 100 readers gave it 4 stars or more.</p>
+    <p>On a computer, the top bar shows what share of your shelf the crowd has. Under 40%, the candidates are weak, and a warning shows above the deck.</p>
+
+    <h3>What an axis is</h3>
+    <p>A text model reads each book's title, author and description and gives it a position in a space of meaning. Books about similar things sit close together.</p>
+    <p>An axis is a line between two ideas that you type in words, for example "melancholy" and "comic". The phrases get positions in the same space, and the line runs from one to the other. Nobody labels any book.</p>
+    <p>Each book is placed on the line by how far it leans toward one idea or the other. Your shelf and the candidates are measured from the same middle point, the average of your shelf, so a position means the same for both.</p>
+    <p>On the spectrum, tall dark ticks are books you rated 4 or 5, faint ticks are books you rated 1 or 2, and diamonds are candidates. The filled diamond is the card you are deciding on.</p>
+
+    <h3>The check under the axis</h3>
+    <p>The sentence under the spectrum compares the order of your rated books on the axis with your star ratings (a Spearman rank correlation). Under 0.1 is "no relation", under 0.3 is "weak", above that is "clear". With fewer than 5 rated books it says "too few to tell", never zero.</p>
+
+    <h3>What the shelf panel shows</h3>
+    <ul>
+      <li><b>Loves most / Merely tolerates.</b> A taste direction from your ratings: books above your average rating pull it one way, books below pull it the other way.</li>
+      <li><b>Loves more than the crowd.</b> Your rating minus the Goodreads average.</li>
+      <li><b>Blind spot.</b> The books least like the ones you rated 4 or more.</li>
+    </ul>
+
+    <h3>How your verdicts change results</h3>
+    <dl class="vt">
+      <dt>Want to read</dt><dd>Stays on your list and leaves the deck. No effect on taste yet.</dd>
+      <dt>Read it</dt><dd>Joins the shelf as a read book with no rating. In the reader comparison it counts as 4 stars.</dd>
+      <dt>Didn't like it</dt><dd>Joins the shelf with 2 stars: a negative signal for your taste and for the reader comparison.</dd>
+      <dt>Not interested</dt><dd>Hidden. Says nothing about taste.</dd>
+    </dl>
+    <p>Shelf changes apply at the next Re-analyze. A book you decided on does not come back. Every verdict can be undone (Z, or × in Decided).</p>
+
+    <h3>Ask the shelf</h3>
+    <p>A chat model gets your taste profile and the top candidates. When a question names a direction, such as "less violent", it picks the two poles itself, plots the axis and reads the check before it answers.</p>
+
+    <h3>Limits</h3>
+    <ul>
+      <li>An axis describes your shelf. It does not predict what you will rate high, unless the check says so.</li>
+      <li>The axis comes only from the phrases. Different phrases give a different axis.</li>
+      <li>Positions come from title, author and description, not from the text of the book.</li>
+      <li>Only books the crowd has can be candidates, and only matched shelf books find similar readers.</li>
+      <li>"Read it" books have no rating, so they do not move the taste direction. "Want to read" has no effect on taste yet.</li>
+    </ul>
+    <p class="src">Source: METHOD.md, DESIGN.md and the code in bookmatch/.</p>
+  </div>
+</aside>
+
 <dialog id="addDialog">
   <h2>Add a reader</h2>
   <p class="muted" style="margin:0;font-size:.9rem">Any public Goodreads profile. A private profile is reported, never guessed.</p>
@@ -222,7 +295,6 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const key = b => `${(b.title || '').toLowerCase()}|${(b.author || '').toLowerCase()}`;
 const PRESETS = [
-  ['French vs American', ['French literature', 'a novel set in France'], ['American literature', 'a novel set in small-town America']],
   ['Melancholy vs comic', ['melancholy, grief, quiet sorrow'], ['comic, light-hearted, funny']],
   ['Summer vs winter', ['summer, heat, the sea, holidays'], ['winter, snow, cold, long nights']],
   ['Experimental vs conventional', ['experimental form, fragmented, avant-garde'], ['conventional, plot-driven, straightforward']],
@@ -284,7 +356,8 @@ function renderDeck(anim) {
   const spines = [...data.verdicts.want, ...data.verdicts.read, ...data.verdicts.disliked, ...data.verdicts.not_interested].map(v => v.verdict)
     .concat(deck.map((_, i) => i === cur ? 'cur' : ''));
   const b = deck[cur];
-  $('#decide').innerHTML = `
+  const weak = data.analysis.match_rate < 0.4 ? `<div class="notice error">Only ${Math.round(data.analysis.match_rate * 100)}% of this shelf is in the crowd data. The candidates are weak.</div>` : '';
+  $('#decide').innerHTML = `${weak}
     <div class="rail"><span class="count">${deck.length ? `${cur + 1} of ${deck.length}` : 'deck clear'}</span><div class="spines" aria-hidden="true">${spines.map(c => `<i class="${c}"></i>`).join('')}</div></div>
     ${b ? `<article class="card ${anim || ''}">
       <h1 class="title">${esc(b.title)}</h1>
@@ -351,7 +424,7 @@ async function reverdict(book, v) {
   } catch (e) { flash(e.message); }
 }
 document.addEventListener('keydown', e => {
-  if (e.target.matches('input, textarea, select') || !data || !data.analysis) return;
+  if (e.target.matches('input, textarea, select') || !data || !data.analysis || $('.drawer.open')) return;
   const k = e.key.toLowerCase();
   if (KEYS[k]) { e.preventDefault(); decide(KEYS[k]); }
   else if (k === 'z' || (k === 'z' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); undo(); }
@@ -451,8 +524,11 @@ async function send() {
   log.scrollTop = log.scrollHeight;
 }
 $('#send').onclick = send; $('#msg').onkeydown = e => { if (e.key === 'Enter') send(); };
-$('#askBtn').onclick = () => { $('#drawer').classList.add('open'); $('#msg').focus(); };
+$('#askBtn').onclick = () => { $('#how').classList.remove('open'); $('#drawer').classList.add('open'); $('#msg').focus(); };
 $('#closeAsk').onclick = () => $('#drawer').classList.remove('open');
+$('#howBtn').onclick = () => { $('#drawer').classList.remove('open'); $('#how').classList.toggle('open'); };
+$('#closeHow').onclick = () => $('#how').classList.remove('open');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#how').classList.remove('open'); $('#drawer').classList.remove('open'); } });
 $('#openAdd').onclick = () => $('#addDialog').showModal();
 $('#cancelAdd').onclick = () => $('#addDialog').close();
 $('#addForm').onsubmit = async e => {

@@ -78,6 +78,9 @@ decide on candidates with one tap or one key (W, R, D, N; Z to undo), and on the
 the axis, the decided ledger and the shelf. The candidate you are deciding on is marked
 live on the spectrum among the books you have read, with a sentence saying where it
 sits and next to what.
+*How it works*, in the bar, opens a plain-language panel on the data, the axes, the
+scoring, what each verdict does and the limits. A shelf with under 40% of its books in
+the corpus gets a warning above the deck.
 
 ![One screen: the deck on the left, the axis with the current candidate marked, the ledger and the shelf on the right](assets/stage.jpeg)
 
